@@ -12,6 +12,7 @@ Modes:
 """
 
 import argparse
+import os
 import socket
 import select
 import sys
@@ -53,30 +54,6 @@ def release_gpio_if_busy(pin: int, chip: int, verbose: bool) -> None:
         lgpio.gpiochip_close(handle)
 
 
-def release_gpio_if_busy(pin: int, chip: int, verbose: bool) -> None:
-    try:
-        import lgpio
-    except ImportError:
-        if verbose:
-            print("lgpio module not available; cannot force-release GPIO.", file=sys.stderr)
-        return
-
-    try:
-        handle = lgpio.gpiochip_open(chip)
-    except lgpio.error as exc:
-        if verbose:
-            print(f"Failed to open gpiochip {chip}: {exc}", file=sys.stderr)
-        return
-
-    try:
-        with suppress(lgpio.error):
-            lgpio.gpio_free(handle, pin)
-            if verbose:
-                print(f"Released GPIO {pin} on chip {chip}.", file=sys.stderr)
-    finally:
-        lgpio.gpiochip_close(handle)
-
-
 class SteeringPWM:
     def __init__(
         self,
@@ -84,13 +61,14 @@ class SteeringPWM:
         left_us: int,
         center_us: int,
         right_us: int,
-        hz: float = 200.0,
+        hz: float = 100.0,
         timeout_s: float = 0.5,
-        max_rate_us_per_s: float = 4000.0,
-        deadband_us: float = 2.0,
+        max_rate_us_per_s: float = 3000.0,
+        deadband_us: float = 3.0,
         verbose: bool = False,
         chip: int = 0,
         force_release: bool = False,
+        realtime: bool = False,
     ):
         if lgpio is None:
             raise RuntimeError(f"lgpio module not available: {_LGPIO_IMPORT_ERROR}")
@@ -107,12 +85,15 @@ class SteeringPWM:
         self.deadband_us = float(deadband_us)
         self.verbose = bool(verbose)
         self.chip = int(chip)
+        self.realtime = bool(realtime)
 
-        self.servo_freq = 50.0
         self.period_us = 20000.0
 
         if force_release:
             release_gpio_if_busy(self.pin, self.chip, self.verbose)
+
+        if self.realtime:
+            self._enable_realtime()
 
         self.handle = lgpio.gpiochip_open(self.chip)
         try:
@@ -134,8 +115,17 @@ class SteeringPWM:
         if self._last_applied_us is not None and abs(pw_us - self._last_applied_us) < self.deadband_us:
             return
         self._last_applied_us = float(pw_us)
-        duty = clamp(float(pw_us) / self.period_us, 0.0, 1.0)
-        lgpio.tx_pwm(self.handle, self.pin, self.servo_freq, duty * 100.0)
+        lgpio.tx_servo(self.handle, self.pin, int(round(pw_us)))
+
+    def _enable_realtime(self) -> None:
+        try:
+            os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(10))
+        except PermissionError:
+            if self.verbose:
+                print("Realtime scheduling not permitted; run as root for --realtime.", file=sys.stderr)
+        except AttributeError:
+            if self.verbose:
+                print("Realtime scheduling not supported on this platform.", file=sys.stderr)
 
     def set_norm(self, value: float) -> None:
         if value != value:
@@ -171,7 +161,7 @@ class SteeringPWM:
 
     def stop(self) -> None:
         with suppress(lgpio.error):
-            lgpio.tx_pwm(self.handle, self.pin, 0, 0)
+            lgpio.tx_servo(self.handle, self.pin, 0)
             lgpio.gpio_free(self.handle, self.pin)
         lgpio.gpiochip_close(self.handle)
 
@@ -269,11 +259,13 @@ def main() -> int:
     ap.add_argument("--left-us", type=int, default=1100)
     ap.add_argument("--center-us", type=int, default=1500)
     ap.add_argument("--right-us", type=int, default=1900)
-    ap.add_argument("--hz", type=float, default=200.0, help="Control loop rate (Hz).")
+    ap.add_argument("--hz", type=float, default=100.0, help="Control loop rate (Hz).")
     ap.add_argument("--timeout", type=float, default=0.5)
-    ap.add_argument("--max-rate", type=float, default=4000.0)
-    ap.add_argument("--deadband-us", type=float, default=2.0)
+    ap.add_argument("--max-rate", type=float, default=3000.0)
+    ap.add_argument("--deadband-us", type=float, default=3.0)
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--realtime", action="store_true",
+                    help="Attempt to enable realtime scheduling (requires root).")
     ap.add_argument("--mode", choices=["keyboard", "stdin", "udp"], default="keyboard")
     ap.add_argument("--key-step", type=float, default=0.08)
     ap.add_argument("--udp-host", type=str, default="0.0.0.0")
@@ -295,6 +287,7 @@ def main() -> int:
         verbose=args.verbose,
         chip=args.lgpio_chip,
         force_release=args.force_release,
+        realtime=args.realtime,
     )
 
     try:
