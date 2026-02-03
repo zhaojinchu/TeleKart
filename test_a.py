@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """
-testA_servo_constant.py
+test_a.py
 
-TEST A: "Set once and do nothing"
-- Sets a constant servo pulse once (default 1500us center)
-- Then sleeps without touching PWM again
+TEST: "Hold a fixed servo angle"
+- Sets a constant servo pulse once (default 1500us center).
+- Then sleeps without touching PWM again.
 
 Goal:
-- If servo STILL jitters, it's likely power/ground/EMI/servo hardware (or PWM backend behavior),
-  not your update loop / print timing.
-- If jitter STOPS, your main code's repeated updates / logging / timing is contributing.
+- Verify the servo can hold a specific angle on a Pi 5 with minimal software activity.
+- If jitter persists, the cause is likely power/ground/EMI/servo hardware (or PWM backend).
+- If jitter stops, your main loop updates/logging are contributing.
+
+Tip:
+- Map your target angle to a pulse width (often ~1000-2000us; 1500us is center).
 
 Run examples:
-  python3 testA_servo_constant.py
-  python3 testA_servo_constant.py --pin 18 --us 1500 --seconds 10
-  python3 testA_servo_constant.py --pin 18 --us 1700 --seconds 15
+  python3 test_a.py
+  python3 test_a.py --pin 18 --us 1500 --seconds 10
+  python3 test_a.py --pin 18 --us 1700 --seconds 15
 """
 
 import argparse
@@ -25,7 +28,9 @@ from gpiozero.pins.lgpio import LGPIOFactory
 
 
 def clamp(x: float, lo: float, hi: float) -> float:
-    return lo if x < lo else hi if x > hi el
+    return lo if x < lo else hi if x > hi else x
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pin", type=int, default=18, help="Servo signal GPIO (default: 18)")
