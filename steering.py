@@ -19,9 +19,34 @@ import socket
 import select
 import termios
 import tty
+from contextlib import suppress
 
 from gpiozero import Device, PWMOutputDevice
 from gpiozero.pins.lgpio import LGPIOFactory
+
+
+def release_gpio_if_busy(pin: int, chip: int, verbose: bool) -> None:
+    try:
+        import lgpio
+    except ImportError:
+        if verbose:
+            print("lgpio module not available; cannot force-release GPIO.", file=sys.stderr)
+        return
+
+    try:
+        handle = lgpio.gpiochip_open(chip)
+    except lgpio.error as exc:
+        if verbose:
+            print(f"Failed to open gpiochip {chip}: {exc}", file=sys.stderr)
+        return
+
+    try:
+        with suppress(lgpio.error):
+            lgpio.gpio_free(handle, pin)
+            if verbose:
+                print(f"Released GPIO {pin} on chip {chip}.", file=sys.stderr)
+    finally:
+        lgpio.gpiochip_close(handle)
 
 
 class SteeringPWM:
@@ -208,10 +233,15 @@ def main():
     ap.add_argument("--key-step", type=float, default=0.08)
     ap.add_argument("--udp-host", type=str, default="0.0.0.0")
     ap.add_argument("--udp-port", type=int, default=9999)
+    ap.add_argument("--lgpio-chip", type=int, default=0)
+    ap.add_argument("--force-release", action="store_true",
+                    help="Force-release GPIO before claiming it (use if you see 'GPIO busy').")
     args = ap.parse_args()
 
     # Force lgpio backend
     Device.pin_factory = LGPIOFactory()
+    if args.force_release:
+        release_gpio_if_busy(args.pin, args.lgpio_chip, args.verbose)
 
     steer = SteeringPWM(
         pin=args.pin,
