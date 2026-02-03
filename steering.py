@@ -53,6 +53,30 @@ def release_gpio_if_busy(pin: int, chip: int, verbose: bool) -> None:
         lgpio.gpiochip_close(handle)
 
 
+def release_gpio_if_busy(pin: int, chip: int, verbose: bool) -> None:
+    try:
+        import lgpio
+    except ImportError:
+        if verbose:
+            print("lgpio module not available; cannot force-release GPIO.", file=sys.stderr)
+        return
+
+    try:
+        handle = lgpio.gpiochip_open(chip)
+    except lgpio.error as exc:
+        if verbose:
+            print(f"Failed to open gpiochip {chip}: {exc}", file=sys.stderr)
+        return
+
+    try:
+        with suppress(lgpio.error):
+            lgpio.gpio_free(handle, pin)
+            if verbose:
+                print(f"Released GPIO {pin} on chip {chip}.", file=sys.stderr)
+    finally:
+        lgpio.gpiochip_close(handle)
+
+
 class SteeringPWM:
     def __init__(
         self,
