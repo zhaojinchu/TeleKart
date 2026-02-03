@@ -26,7 +26,8 @@ from gpiozero.pins.lgpio import LGPIOFactory
 
 class SteeringPWM:
     def __init__(self, pin: int, left_us: int, center_us: int, right_us: int,
-                 hz: float = 100.0, timeout_s: float = 0.75, max_rate_us_per_s: float = 2500.0):
+                 hz: float = 100.0, timeout_s: float = 0.75, max_rate_us_per_s: float = 2500.0,
+                 deadband_us: float = 1.0, verbose: bool = False):
         if not (left_us < center_us < right_us):
             raise ValueError("Calibration must satisfy left_us < center_us < right_us")
 
@@ -38,6 +39,8 @@ class SteeringPWM:
         self.loop_hz = float(hz)
         self.timeout_s = float(timeout_s)
         self.max_rate = float(max_rate_us_per_s)
+        self.deadband_us = float(deadband_us)
+        self.verbose = bool(verbose)
 
         # Servo PWM is 50 Hz (20 ms period)
         self.servo_freq = 50.0
@@ -47,14 +50,15 @@ class SteeringPWM:
 
         self._target_us = float(self.center_us)
         self._current_us = float(self.center_us)
-        self._last_update = time.time()
+        self._last_update = time.monotonic()
+        self._last_applied_us = None
 
-        self.last_cmd = time.time()
+        self.last_cmd = time.monotonic()
         self._apply_us(self.center_us)
 
     def _apply_us(self, pw_us: float):
         # deadband: don't touch PWM unless meaningful change
-        if self._last_applied_us is not None and abs(pw_us - self._last_applied_us) < 1.0:
+        if self._last_applied_us is not None and abs(pw_us - self._last_applied_us) < self.deadband_us:
             return
         self._last_applied_us = float(pw_us)
 
@@ -69,13 +73,13 @@ class SteeringPWM:
             self._target_us = self.center_us + x * (self.right_us - self.center_us)
         else:
             self._target_us = self.center_us + x * (self.center_us - self.left_us)
-        self.last_cmd = time.time()
+        self.last_cmd = time.monotonic()
 
     def center(self):
         self._target_us = float(self.center_us)
 
     def update(self):
-        now = time.time()
+        now = time.monotonic()
         dt = max(1e-4, now - self._last_update)
         self._last_update = now
 
@@ -92,7 +96,8 @@ class SteeringPWM:
             self._current_us = self._target_us
 
         self._apply_us(self._current_us)
-        print("steering angle", self._current_us, "target angle", self._target_us)
+        if self.verbose:
+            print("steering angle", self._current_us, "target angle", self._target_us)
 
     def stop(self):
         self.pwm.off()
@@ -101,6 +106,7 @@ class SteeringPWM:
 
 def run_stdin(steer: SteeringPWM):
     period = 1.0 / steer.loop_hz
+    next_tick = time.monotonic()
     while True:
         r, _, _ = select.select([sys.stdin], [], [], 0.0)
         if r:
@@ -113,7 +119,8 @@ def run_stdin(steer: SteeringPWM):
                 pass
 
         steer.update()
-        time.sleep(period)
+        next_tick += period
+        time.sleep(max(0.0, next_tick - time.monotonic()))
 
 
 def run_udp(steer: SteeringPWM, host: str, port: int):
@@ -122,6 +129,7 @@ def run_udp(steer: SteeringPWM, host: str, port: int):
     sock.setblocking(False)
 
     period = 1.0 / steer.loop_hz
+    next_tick = time.monotonic()
     while True:
         try:
             data, _ = sock.recvfrom(256)
@@ -134,12 +142,14 @@ def run_udp(steer: SteeringPWM, host: str, port: int):
             pass
 
         steer.update()
-        time.sleep(period)
+        next_tick += period
+        time.sleep(max(0.0, next_tick - time.monotonic()))
 
 
 def run_keyboard(steer: SteeringPWM, step: float):
     period = 1.0 / steer.loop_hz
     steer_val = 0.0
+    next_tick = time.monotonic()
 
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
@@ -177,20 +187,23 @@ def run_keyboard(steer: SteeringPWM, step: float):
                 steer.set_norm(steer_val)
 
             steer.update()
-            time.sleep(period)
+            next_tick += period
+            time.sleep(max(0.0, next_tick - time.monotonic()))
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pin", type=int, default=18, help="Servo signal GPIO (default: 18).")
+    ap.add_argument("--pin", type=int, default=18, help="Servo signal GPIO (default: 18; PWM-capable pins: 12/13/18/19).")
     ap.add_argument("--left-us", type=int, default=1100)
     ap.add_argument("--center-us", type=int, default=1500)
     ap.add_argument("--right-us", type=int, default=1900)
     ap.add_argument("--hz", type=float, default=100.0)
     ap.add_argument("--timeout", type=float, default=0.75)
     ap.add_argument("--max-rate", type=float, default=2500.0)
+    ap.add_argument("--deadband-us", type=float, default=1.0)
+    ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--mode", choices=["keyboard", "stdin", "udp"], default="keyboard")
     ap.add_argument("--key-step", type=float, default=0.08)
     ap.add_argument("--udp-host", type=str, default="0.0.0.0")
@@ -208,6 +221,8 @@ def main():
         hz=args.hz,
         timeout_s=args.timeout,
         max_rate_us_per_s=args.max_rate,
+        deadband_us=args.deadband_us,
+        verbose=args.verbose,
     )
 
     try:
