@@ -53,6 +53,11 @@ class SteeringPWM:
         self._apply_us(self.center_us)
 
     def _apply_us(self, pw_us: float):
+        # deadband: don't touch PWM unless meaningful change
+        if self._last_applied_us is not None and abs(pw_us - self._last_applied_us) < 1.0:
+            return
+        self._last_applied_us = float(pw_us)
+
         duty = max(0.0, min(1.0, float(pw_us) / self.period_us))
         self.pwm.value = duty
 
