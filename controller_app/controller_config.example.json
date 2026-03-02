@@ -1,0 +1,18 @@
+{
+  "vehicle_url": "http://10.0.0.42",
+  "vehicle_name": "telekart-01",
+  "auth_key": "changeme-telekart",
+  "controller_port": 4211,
+  "control_port": 4210,
+  "camera_url": "rtsp://10.0.0.43:8554/telekart",
+  "steer_axis": 0,
+  "throttle_axis": 2,
+  "brake_axis": 5,
+  "steer_deadzone": 0.05,
+  "pedal_deadzone": 0.03,
+  "steer_filter_alpha": 0.25,
+  "invert_throttle": false,
+  "invert_brake": false,
+  "reverse_button": -1,
+  "estop_button": -1
+}

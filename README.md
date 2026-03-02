@@ -1,30 +1,44 @@
 # TeleKart
 
-ESP32 Wi-Fi RC car controller for a brushless ESC and steering servo.
+TeleKart is an ESP32-based RC car controller for a steering servo and brushless ESC, refactored for infrastructure Wi-Fi (`CMU-DEVICE`) instead of a short-range self-hosted access point.
 
-The main modular build is the root sketch:
-- `TeleKart.ino`
-- `app_state.*`
-- `config.h`
-- `rc_output.*`
-- `web_handlers.*`
-- `web_page.h`
+## Architecture
+- `TeleKart.ino`: main ESP32 firmware entrypoint
+- `network_manager.*`: station-mode Wi-Fi, fallback setup AP, persisted config
+- `control_link.*`: authenticated pairing, UDP control packets, telemetry
+- `drive_control.*`: deterministic control loop and vehicle-feel model
+- `web_handlers.*` + `web_page.h`: setup, calibration, status, and emergency UI
+- `controller_app/`: native laptop operator app for wheel/pedals over UDP
+- `camera_node/`: notes for the separate video processor
 
-This build starts an access point named `ESP32-CAR`, serves a browser-based control page, and drives:
-- Steering servo on GPIO 18
-- ESC signal on GPIO 19
+## Runtime Model
+- The ESP32 joins `CMU-DEVICE` as a Wi-Fi client.
+- If it cannot connect within 15 seconds, it can fall back to a temporary setup AP (`TeleKart-Setup`).
+- A native laptop controller app pairs with the ESP32 over HTTP, then sends authenticated UDP control packets on port `4210`.
+- The ESP32 returns telemetry over UDP to the same controller socket.
+- The browser UI is no longer the primary driving surface; it is for setup, calibration, diagnostics, and bench debug.
 
-Other sketches in this repo:
-- `with_steering_wheel/with_steering_wheel.ino`: standalone "all-in-one" version with steering wheel / pedal support.
-- `brushless_esc_code/brushless_esc_code.ino`: older simpler standalone version.
+## Hardware
+- Steering servo signal: GPIO 18
+- ESC signal: GPIO 19
+- Recommended: power the servo from a dedicated 5V regulator/BEC, not from the ESP32 5V pin
 
-How it works:
-- The ESP32 creates a local Wi-Fi network.
-- A browser connects to `http://192.168.4.1/`.
-- The web UI sends throttle / steering commands to `/cmd`.
-- A failsafe stops the car if commands stop arriving for 700 ms.
+## Build Requirements
+- ESP32 Arduino core
+- `ESP32Servo`
+- The ESP32 core ships the other libraries used here (`WiFi`, `WebServer`, `Preferences`, `WiFiUDP`, `ESPmDNS`, `mbedtls`)
 
-Notes:
-- This repo expects the ESP32 Arduino core plus `ESP32Servo`.
-- ESC arming includes a 3 second delay during boot.
-- Calibrate steering center and ESC limits before driving.
+## Laptop Controller App
+The operator app lives in `controller_app/`.
+
+Typical usage:
+```bash
+cd controller_app
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python3 controller.py --vehicle-url http://TELEKART_IP --vehicle-name telekart-01 --auth-key YOUR_SHARED_KEY
+```
+
+## Camera
+Production video should run on a separate SBC and stream RTSP to the laptop. The control ESP32 intentionally does not host the camera pipeline.

@@ -1,565 +1,356 @@
 #pragma once
+
 #include <pgmspace.h>
 
-// Put the entire HTML page here.
-// NOTE: This is V6 (controller select + center + trim + shaping).
-// If you want, we can add the steering smoothing patch later.
 static const char MAIN_PAGE[] PROGMEM = R"HTML(
 <!doctype html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ESP32 Car V6</title>
+<title>TeleKart Setup</title>
 <style>
-  body { font-family: Arial; margin:20px; max-width:900px; }
-  .card { border:1px solid #ddd; padding:15px; border-radius:12px; margin-bottom:15px;}
-  button { padding:10px; margin:5px; }
-  input[type=range] { width:100%; }
-  .value { font-weight:bold; }
-  .small { color:#666; font-size: 12px; }
-  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
-  .row > * { flex: 1 1 180px; }
-  input[type=number] { width: 100%; padding:8px; }
-  select { width: 100%; padding:8px; }
-  label { display:block; margin-bottom:6px; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  :root {
+    color-scheme: light;
+    --bg: #f2efe8;
+    --card: #fffaf0;
+    --line: #d4c7ad;
+    --ink: #1d2428;
+    --muted: #5f6b72;
+    --accent: #0f6a73;
+    --warn: #a63c1e;
+  }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top left, #fff9ec, var(--bg) 55%);
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+  }
+  main {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 2rem;
+  }
+  p {
+    color: var(--muted);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 30px rgba(46, 56, 61, 0.08);
+  }
+  .card h2 {
+    margin-top: 0;
+    font-size: 1.1rem;
+  }
+  label {
+    display: block;
+    margin: 12px 0 4px;
+    font-size: 0.92rem;
+    color: var(--muted);
+  }
+  input, textarea, button {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+    font: inherit;
+  }
+  input, textarea {
+    background: #fffdf7;
+  }
+  button {
+    margin-top: 12px;
+    cursor: pointer;
+    background: var(--accent);
+    border: 0;
+    color: white;
+    font-weight: 600;
+  }
+  button.alt {
+    background: #3f4d54;
+  }
+  button.warn {
+    background: var(--warn);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .tiny {
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  pre {
+    background: #12181b;
+    color: #d9edf1;
+    border-radius: 14px;
+    padding: 12px;
+    overflow: auto;
+    min-height: 180px;
+  }
+  .status {
+    margin-top: 12px;
+    color: var(--muted);
+    min-height: 1.2em;
+  }
+  @media (max-width: 640px) {
+    .row {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>
 </head>
 <body>
+<main>
+  <h1>TeleKart Control Plane</h1>
+  <p>This page is for setup, calibration, diagnostics, and emergency override. Primary driving is handled by the native controller app over CMU-DEVICE.</p>
 
-<h2>ESP32 Car V6</h2>
-<div class="small">Connect to WiFi: <b>ESP32-CAR</b>, then open <b>http://192.168.4.1/</b></div>
+  <div class="grid">
+    <section class="card">
+      <h2>Status</h2>
+      <button class="alt" onclick="refreshAll()">Refresh Now</button>
+      <pre id="statusView">Loading...</pre>
+      <div class="status" id="statusMsg"></div>
+    </section>
 
-<div class="card">
-  <div class="row">
-    <div>
-      <label>Controller</label>
-      <select id="gpSelect"></select>
-      <div class="small" id="gpInfo">(no controller)</div>
-    </div>
-    <div>
-      <button onclick="refreshGamepads()">Refresh list</button>
-      <button id="stopBtn" onclick="stopNow()">STOP</button>
-    </div>
+    <section class="card">
+      <h2>Network</h2>
+      <label for="ssid">SSID</label>
+      <input id="ssid" value="CMU-DEVICE">
+
+      <label for="password">Password / Token</label>
+      <input id="password" type="password" placeholder="Leave unchanged to keep current value">
+
+      <label for="vehicleName">Vehicle Name</label>
+      <input id="vehicleName" value="telekart-01">
+
+      <label for="sharedKey">Shared Auth Key</label>
+      <input id="sharedKey" placeholder="Required for pairing">
+
+      <label><input id="fallbackAp" type="checkbox" checked style="width:auto;margin-right:8px;">Enable fallback setup AP</label>
+
+      <button onclick="saveNetwork()">Save Network Config</button>
+      <div class="status" id="networkMsg"></div>
+    </section>
+
+    <section class="card">
+      <h2>Calibration</h2>
+      <label for="steeringTrim">Steering Trim</label>
+      <input id="steeringTrim" type="number" min="-100" max="100" value="0">
+
+      <label for="steerCenterUs">Steering Center (us)</label>
+      <input id="steerCenterUs" type="number" min="1200" max="2400" value="2000">
+
+      <button onclick="saveCalibration()">Save Calibration</button>
+      <button class="alt" onclick="clearEstop()">Clear E-Stop</button>
+      <button class="warn" onclick="triggerEstop()">Trigger E-Stop</button>
+      <div class="status" id="calMsg"></div>
+    </section>
+
+    <section class="card">
+      <h2>Debug Drive</h2>
+      <p class="tiny">This is a bench-only direct HTTP control path. It is not the primary driving mode.</p>
+
+      <div class="row">
+        <div>
+          <label for="debugThrottle">Throttle (%)</label>
+          <input id="debugThrottle" type="range" min="-100" max="100" value="0">
+        </div>
+        <div>
+          <label for="debugSteer">Steer (%)</label>
+          <input id="debugSteer" type="range" min="-100" max="100" value="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="tiny">Throttle: <span id="debugThrottleValue">0</span></div>
+        <div class="tiny">Steer: <span id="debugSteerValue">0</span></div>
+      </div>
+
+      <button onclick="sendDebug()">Send Debug Command</button>
+      <button class="alt" onclick="stopDebug()">Stop Debug Output</button>
+      <div class="status" id="debugMsg"></div>
+    </section>
   </div>
-</div>
-
-<div class="card">
-  Throttle <span id="thVal" class="value">0</span>
-  <input id="th" type="range" min="-100" max="100" value="0">
-</div>
-
-<div class="card">
-  Steering <span id="stVal" class="value">0</span>
-  <input id="st" type="range" min="-100" max="100" value="0">
-</div>
-
-<div class="card">
-  <b>Steering neutral (adjust anytime)</b>
-  <div class="small">Use <b>Center</b> for big correction, <b>Trim</b> for small correction.</div>
-
-  <div style="margin-top:10px;">
-    Center (µs) <span id="centerVal" class="value">2000</span>
-    <input id="center" type="range" min="1200" max="2400" value="2000">
-  </div>
-
-  <div style="margin-top:10px;">
-    Trim <span id="trimVal" class="value">0</span>
-    <input id="trim" type="range" min="-100" max="100" value="0">
-  </div>
-
-  <div class="row" style="margin-top:10px;">
-    <button onclick="recenter()">Recenter (bake trim into center)</button>
-  </div>
-</div>
-
-<div class="card">
-  <b>Pedals setup</b>
-  <div class="small">
-    Default: <b>B7 throttle</b>, <b>B6 brake</b>.
-  </div>
-
-  <div class="row" style="margin-top:10px;">
-    <div>
-      <label>Pedal Source</label>
-      <select id="pedalSource">
-        <option value="buttons" selected>Buttons (B6/B7 triggers)</option>
-        <option value="axes">Axes</option>
-      </select>
-    </div>
-
-    <div>
-      <label>Throttle Button (B7)</label>
-      <input id="gasBtn" type="number" min="0" max="31" value="7">
-    </div>
-
-    <div>
-      <label>Brake Button (B6)</label>
-      <input id="brakeBtn" type="number" min="0" max="31" value="6">
-    </div>
-
-    <div>
-      <label>Reverse enabled?</label>
-      <select id="enableReverse">
-        <option value="yes" selected>Yes (brake -> reverse)</option>
-        <option value="no">No (throttle only)</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="row" style="margin-top:10px;">
-    <div>
-      <label>Throttle Axis (if using Axes)</label>
-      <input id="gasAxis" type="number" min="0" max="15" value="2">
-    </div>
-    <div>
-      <label>Brake Axis (if using Axes)</label>
-      <input id="brakeAxis" type="number" min="0" max="15" value="5">
-    </div>
-    <div>
-      <label><input id="invGas" type="checkbox"> Invert Throttle</label>
-    </div>
-    <div>
-      <label><input id="invBrake" type="checkbox"> Invert Brake</label>
-    </div>
-  </div>
-
-  <div class="small mono" id="pedalStatus" style="margin-top:10px;"></div>
-</div>
-
-<div class="card">
-  <b>Throttle sensitivity</b>
-  <div class="small">
-    Deadband ignores tiny movement, Expo makes low end gentler, Min Start helps overcome resistance.
-  </div>
-
-  <div class="row" style="margin-top:10px;">
-    <div>
-      Deadband (%) <span id="dbVal" class="value">5</span>
-      <input id="deadband" type="range" min="0" max="20" value="5">
-    </div>
-    <div>
-      Expo (×10) <span id="expoVal" class="value">20</span>
-      <input id="expo10" type="range" min="10" max="40" value="20">
-    </div>
-    <div>
-      Min Start (%) <span id="msVal" class="value">18</span>
-      <input id="minstart" type="range" min="0" max="40" value="18">
-    </div>
-  </div>
-</div>
-
-<div class="card">
-  Throttle Strength (keyboard) <span id="powVal" class="value">70</span>
-  <input id="power" type="range" min="10" max="100" value="70">
-</div>
-
-<div class="card">
-  <b>Debug</b>
-  <label><input id="dbg" type="checkbox"> Print raw axes/buttons to console</label>
-</div>
+</main>
 
 <script>
-const STEER_TRIM_US_PER_UNIT_JS = 3;
-const SEND_INTERVAL_MS = 40;
-const STEER_WHEEL_DEADZONE = 0.08;
-const STEER_ZERO_LOCK = 2;
-const STEER_FILTER_ALPHA = 0.25;
+const statusViewEl = document.getElementById("statusView");
+const statusMsgEl = document.getElementById("statusMsg");
+const networkMsgEl = document.getElementById("networkMsg");
+const calMsgEl = document.getElementById("calMsg");
+const debugMsgEl = document.getElementById("debugMsg");
 
-const thEl = document.getElementById("th");
-const stEl = document.getElementById("st");
-const trimEl = document.getElementById("trim");
-const centerEl = document.getElementById("center");
-const powerEl = document.getElementById("power");
-const deadbandEl = document.getElementById("deadband");
-const expo10El = document.getElementById("expo10");
-const minStartEl = document.getElementById("minstart");
-const dbgEl = document.getElementById("dbg");
-const gpSelectEl = document.getElementById("gpSelect");
-const gpInfoEl = document.getElementById("gpInfo");
-const pedalSourceEl = document.getElementById("pedalSource");
-const gasBtnEl = document.getElementById("gasBtn");
-const brakeBtnEl = document.getElementById("brakeBtn");
-const enableReverseEl = document.getElementById("enableReverse");
-const gasAxisEl = document.getElementById("gasAxis");
-const brakeAxisEl = document.getElementById("brakeAxis");
-const invGasEl = document.getElementById("invGas");
-const invBrakeEl = document.getElementById("invBrake");
-const pedalStatusEl = document.getElementById("pedalStatus");
-const thValEl = document.getElementById("thVal");
-const stValEl = document.getElementById("stVal");
-const trimValEl = document.getElementById("trimVal");
-const centerValEl = document.getElementById("centerVal");
-const powValEl = document.getElementById("powVal");
-const dbValEl = document.getElementById("dbVal");
-const expoValEl = document.getElementById("expoVal");
-const msValEl = document.getElementById("msVal");
-const stopBtnEl = document.getElementById("stopBtn");
+const ssidEl = document.getElementById("ssid");
+const passwordEl = document.getElementById("password");
+const vehicleNameEl = document.getElementById("vehicleName");
+const sharedKeyEl = document.getElementById("sharedKey");
+const fallbackApEl = document.getElementById("fallbackAp");
+const steeringTrimEl = document.getElementById("steeringTrim");
+const steerCenterUsEl = document.getElementById("steerCenterUs");
+const debugThrottleEl = document.getElementById("debugThrottle");
+const debugSteerEl = document.getElementById("debugSteer");
+const debugThrottleValueEl = document.getElementById("debugThrottleValue");
+const debugSteerValueEl = document.getElementById("debugSteerValue");
+let debugRepeatId = null;
 
-let throttle = 0;
-let steer = 0;
-let trim = 0;
-let centerUs = 2000;
-let power = 70;
-
-const keys = {};
-let lastSend = 0;
-let selectedGamepadIndex = null;
-let stopLatched = false;
-let filteredWheel = 0;
-let hasSentState = false;
-let lastSentThrottle = 0;
-let lastSentSteer = 0;
-let lastSentTrim = 0;
-let lastSentCenterUs = 2000;
-
-let pedalSource = "buttons";
-let gasBtnIndex = 7;
-let brakeBtnIndex = 6;
-let enableReverse = true;
-
-let gasAxisIndex = 2;
-let brakeAxisIndex = 5;
-let invertGas = false;
-let invertBrake = false;
-
-let TH_DEADBAND = 5;
-let TH_EXPO = 2.0;
-let TH_MIN_START = 18;
-
-function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
-function deadzone(v, dz){ return Math.abs(v) < dz ? 0 : v; }
-
-function toInt(value, fallback) {
-  const parsed = parseInt(value, 10);
-  return Number.isNaN(parsed) ? fallback : parsed;
+async function getJson(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
 }
 
-function shapeSignedThrottlePct(raw) {
-  raw = clamp(Math.round(raw), -100, 100);
-  const absRaw = Math.abs(raw);
-  if (absRaw <= TH_DEADBAND) return 0;
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 
-  const sign = raw < 0 ? -1 : 1;
-  let scaled = (absRaw - TH_DEADBAND) / (100 - TH_DEADBAND);
-  scaled = clamp(scaled, 0, 1);
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
 
-  let shaped = Math.pow(scaled, TH_EXPO);
-  let out = Math.round(shaped * 100);
-
-  if (TH_MIN_START > 0 && out > 0 && out < TH_MIN_START) out = TH_MIN_START;
-  return sign * clamp(out, 0, 100);
+  return response.json();
 }
 
-function buttonToPct(gp, idx, invertFlag){
-  const button = gp.buttons && gp.buttons[idx] ? gp.buttons[idx].value : 0;
-  let pct = clamp(Math.round(button * 100), 0, 100);
-  if (invertFlag) pct = 100 - pct;
-  return pct;
+function renderStatus(status) {
+  statusViewEl.textContent = JSON.stringify(status, null, 2);
 }
 
-function axisToPctAdaptive(value, invertFlag){
-  if (value === undefined || value === null || Number.isNaN(value)) return 0;
-  let pct;
-  if (value >= 0 && value <= 1) pct = value * 100;
-  else pct = ((value + 1) * 0.5) * 100;
-  pct = clamp(Math.round(pct), 0, 100);
-  if (invertFlag) pct = 100 - pct;
-  return pct;
+function syncDebugLabels() {
+  debugThrottleValueEl.textContent = debugThrottleEl.value;
+  debugSteerValueEl.textContent = debugSteerEl.value;
 }
 
-function updateUI() {
-  thValEl.innerText = throttle;
-  stValEl.innerText = steer;
-  trimValEl.innerText = trim;
-  centerValEl.innerText = centerUs;
-  powValEl.innerText = power;
-  dbValEl.innerText = TH_DEADBAND;
-  expoValEl.innerText = Math.round(TH_EXPO * 10);
-  msValEl.innerText = TH_MIN_START;
-}
+async function refreshAll() {
+  try {
+    const [status, config] = await Promise.all([
+      getJson("/api/status"),
+      getJson("/api/config"),
+    ]);
 
-function syncStopButton() {
-  stopBtnEl.innerText = stopLatched ? "RESUME" : "STOP";
-}
-
-function releaseStopLatch() {
-  if (!stopLatched) return;
-  stopLatched = false;
-  syncStopButton();
-}
-
-function send(extraQuery = "", force = false) {
-  const stateChanged =
-    !hasSentState ||
-    throttle !== lastSentThrottle ||
-    steer !== lastSentSteer ||
-    trim !== lastSentTrim ||
-    centerUs !== lastSentCenterUs ||
-    extraQuery !== "";
-
-  if (!force && !stateChanged) return;
-
-  const now = performance.now();
-  if (!force && (now - lastSend) < SEND_INTERVAL_MS) return;
-  lastSend = now;
-
-  const query =
-    "/cmd?th=" + throttle +
-    "&st=" + steer +
-    "&trim=" + trim +
-    "&center=" + centerUs +
-    extraQuery;
-
-  hasSentState = true;
-  lastSentThrottle = throttle;
-  lastSentSteer = steer;
-  lastSentTrim = trim;
-  lastSentCenterUs = centerUs;
-
-  fetch(query).catch(err => console.log("fetch error:", err));
-}
-
-function applyStoppedState(forceSend) {
-  throttle = 0;
-  steer = 0;
-  filteredWheel = 0;
-  thEl.value = "0";
-  stEl.value = "0";
-  updateUI();
-  if (forceSend) send("", true);
-}
-
-function stopNow() {
-  stopLatched = !stopLatched;
-  syncStopButton();
-
-  if (stopLatched) {
-    applyStoppedState(true);
-  } else {
-    send("", true);
+    renderStatus(status);
+    ssidEl.value = config.ssid || "";
+    vehicleNameEl.value = config.vehicle_name || "";
+    fallbackApEl.checked = !!config.fallback_ap_enabled;
+    steeringTrimEl.value = config.steering_trim ?? 0;
+    steerCenterUsEl.value = config.steer_center_us ?? 2000;
+    statusMsgEl.textContent = "Status refreshed at " + new Date().toLocaleTimeString();
+  } catch (error) {
+    statusMsgEl.textContent = "Refresh failed: " + error.message;
   }
 }
 
-function recenter() {
-  centerUs = clamp(centerUs + trim * STEER_TRIM_US_PER_UNIT_JS, 1200, 2400);
-  trim = 0;
-  centerEl.value = String(centerUs);
-  trimEl.value = "0";
-  updateUI();
-  send("&recenter=1", true);
-}
-
-thEl.oninput = (event) => {
-  releaseStopLatch();
-  throttle = toInt(event.target.value, 0);
-  updateUI();
-  send();
-};
-
-stEl.oninput = (event) => {
-  releaseStopLatch();
-  steer = toInt(event.target.value, 0);
-  updateUI();
-  send();
-};
-
-trimEl.oninput = (event) => {
-  trim = toInt(event.target.value, 0);
-  updateUI();
-  send();
-};
-
-centerEl.oninput = (event) => {
-  centerUs = toInt(event.target.value, 2000);
-  updateUI();
-  send();
-};
-
-powerEl.oninput = (event) => {
-  power = toInt(event.target.value, 70);
-  updateUI();
-};
-
-deadbandEl.oninput = (event) => {
-  TH_DEADBAND = toInt(event.target.value, 5);
-  updateUI();
-};
-
-expo10El.oninput = (event) => {
-  TH_EXPO = toInt(event.target.value, 20) / 10.0;
-  updateUI();
-};
-
-minStartEl.oninput = (event) => {
-  TH_MIN_START = toInt(event.target.value, 18);
-  updateUI();
-};
-
-function syncPedalVars() {
-  pedalSource = pedalSourceEl.value;
-  gasBtnIndex = toInt(gasBtnEl.value, 7);
-  brakeBtnIndex = toInt(brakeBtnEl.value, 6);
-  enableReverse = (enableReverseEl.value === "yes");
-  gasAxisIndex = toInt(gasAxisEl.value, 2);
-  brakeAxisIndex = toInt(brakeAxisEl.value, 5);
-  invertGas = invGasEl.checked;
-  invertBrake = invBrakeEl.checked;
-
-  pedalStatusEl.innerText =
-    "Pedals: source=" + pedalSource +
-    " | throttle=" + (pedalSource === "buttons" ? ("B" + gasBtnIndex) : ("axis " + gasAxisIndex)) +
-    " | brake=" + (pedalSource === "buttons" ? ("B" + brakeBtnIndex) : ("axis " + brakeAxisIndex)) +
-    " | reverse=" + (enableReverse ? "ON" : "OFF");
-}
-
-["pedalSource", "gasBtn", "brakeBtn", "enableReverse", "gasAxis", "brakeAxis", "invGas", "invBrake"].forEach((id) => {
-  document.getElementById(id).addEventListener("change", syncPedalVars);
-});
-
-window.addEventListener("keydown", (event) => {
-  const key = event.key.toLowerCase();
-  if (!["w", "a", "s", "d"].includes(key)) return;
-  event.preventDefault();
-  keys[key] = true;
-  updateFromKeys();
-});
-
-window.addEventListener("keyup", (event) => {
-  const key = event.key.toLowerCase();
-  if (!["w", "a", "s", "d"].includes(key)) return;
-  event.preventDefault();
-  keys[key] = false;
-  updateFromKeys();
-});
-
-function updateFromKeys() {
-  releaseStopLatch();
-  throttle = 0;
-  steer = 0;
-
-  if (keys.w) throttle = power;
-  if (keys.s) throttle = -power;
-  if (keys.a) steer = -70;
-  if (keys.d) steer = 70;
-
-  thEl.value = String(throttle);
-  stEl.value = String(steer);
-  updateUI();
-  send();
-}
-
-function refreshGamepads() {
-  gpSelectEl.innerHTML = "";
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  const connectedPads = [];
-
-  for (let i = 0; i < pads.length; i++) {
-    const pad = pads[i];
-    if (!pad) continue;
-
-    connectedPads.push(pad);
-
-    const option = document.createElement("option");
-    option.value = String(pad.index);
-    option.text = "[" + pad.index + "] " + pad.id;
-    gpSelectEl.appendChild(option);
+async function saveNetwork() {
+  networkMsgEl.textContent = "Saving...";
+  try {
+    await postJson("/api/network", {
+      ssid: ssidEl.value,
+      password: passwordEl.value,
+      vehicle_name: vehicleNameEl.value,
+      shared_key: sharedKeyEl.value,
+      fallback_ap_enabled: fallbackApEl.checked,
+    });
+    passwordEl.value = "";
+    sharedKeyEl.value = "";
+    networkMsgEl.textContent = "Network config saved. The ESP32 is reconnecting.";
+    setTimeout(refreshAll, 1200);
+  } catch (error) {
+    networkMsgEl.textContent = "Save failed: " + error.message;
   }
+}
 
-  if (connectedPads.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.text = "No controllers detected";
-    gpSelectEl.appendChild(option);
-    selectedGamepadIndex = null;
-  } else {
-    const selectedStillPresent = connectedPads.some((pad) => pad.index === selectedGamepadIndex);
-    if (!selectedStillPresent) {
-      selectedGamepadIndex = connectedPads[0].index;
+async function saveCalibration() {
+  calMsgEl.textContent = "Saving...";
+  try {
+    await postJson("/api/config", {
+      steering_trim: Number(steeringTrimEl.value),
+      steer_center_us: Number(steerCenterUsEl.value),
+    });
+    calMsgEl.textContent = "Calibration saved.";
+    refreshAll();
+  } catch (error) {
+    calMsgEl.textContent = "Save failed: " + error.message;
+  }
+}
+
+async function triggerEstop() {
+  try {
+    await postJson("/api/estop", { clear: false });
+    calMsgEl.textContent = "E-stop latched.";
+    refreshAll();
+  } catch (error) {
+    calMsgEl.textContent = "E-stop failed: " + error.message;
+  }
+}
+
+async function clearEstop() {
+  try {
+    await postJson("/api/estop", { clear: true });
+    calMsgEl.textContent = "E-stop cleared.";
+    refreshAll();
+  } catch (error) {
+    calMsgEl.textContent = "Clear failed: " + error.message;
+  }
+}
+
+async function sendDebug() {
+  try {
+    const throttle = Number(debugThrottleEl.value);
+    const steer = Number(debugSteerEl.value);
+    const url = "/cmd?th=" + encodeURIComponent(throttle) + "&st=" + encodeURIComponent(steer);
+    await fetch(url, { cache: "no-store" });
+    debugMsgEl.textContent = "Debug command sent.";
+
+    if (debugRepeatId !== null) {
+      clearInterval(debugRepeatId);
+      debugRepeatId = null;
     }
-    gpSelectEl.value = String(selectedGamepadIndex);
-  }
 
-  updateGpInfo();
+    if (throttle !== 0 || steer !== 0) {
+      debugRepeatId = setInterval(() => {
+        fetch(url, { cache: "no-store" }).catch(() => {});
+      }, 80);
+    }
+  } catch (error) {
+    debugMsgEl.textContent = "Debug send failed: " + error.message;
+  }
 }
 
-function updateGpInfo() {
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  const gp = (selectedGamepadIndex !== null) ? pads[selectedGamepadIndex] : null;
-  gpInfoEl.innerText = gp ? ("(using: " + gp.id + " @ index " + gp.index + ")") : "(no controller)";
+async function stopDebug() {
+  if (debugRepeatId !== null) {
+    clearInterval(debugRepeatId);
+    debugRepeatId = null;
+  }
+  debugThrottleEl.value = "0";
+  debugSteerEl.value = "0";
+  syncDebugLabels();
+  await sendDebug();
 }
 
-gpSelectEl.addEventListener("change", (event) => {
-  selectedGamepadIndex = event.target.value === "" ? null : toInt(event.target.value, 0);
-  filteredWheel = 0;
-  updateGpInfo();
-});
+debugThrottleEl.addEventListener("input", syncDebugLabels);
+debugSteerEl.addEventListener("input", syncDebugLabels);
 
-window.addEventListener("gamepadconnected", refreshGamepads);
-window.addEventListener("gamepaddisconnected", refreshGamepads);
-
-let WHEEL_AXIS_INDEX = 0;
-
-function poll() {
-  if (stopLatched) {
-    filteredWheel = 0;
-    requestAnimationFrame(poll);
-    return;
-  }
-
-  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-  const gp = (selectedGamepadIndex !== null) ? pads[selectedGamepadIndex] : null;
-  if (!gp) {
-    filteredWheel = 0;
-    requestAnimationFrame(poll);
-    return;
-  }
-
-  if (dbgEl.checked) {
-    const axes = (gp.axes || []).map((value) => Number(value.toFixed(3)));
-    const buttons = (gp.buttons || []).map((button) => Number(button.value.toFixed(2)));
-    console.log("axes:", axes, "buttons:", buttons);
-  }
-
-  let wheel = gp.axes[WHEEL_AXIS_INDEX] ?? 0;
-  wheel = deadzone(wheel, STEER_WHEEL_DEADZONE);
-  filteredWheel += (wheel - filteredWheel) * STEER_FILTER_ALPHA;
-  if (Math.abs(filteredWheel) < 0.01) filteredWheel = 0;
-
-  steer = clamp(Math.round(filteredWheel * 100), -100, 100);
-  if (Math.abs(steer) <= STEER_ZERO_LOCK) steer = 0;
-
-  syncPedalVars();
-
-  let raw = 0;
-  if (pedalSource === "buttons") {
-    const gasPct = buttonToPct(gp, gasBtnIndex, invertGas);
-    const brakePct = buttonToPct(gp, brakeBtnIndex, invertBrake);
-    raw = enableReverse ? (gasPct - brakePct) : gasPct;
-  } else {
-    const gasPct = axisToPctAdaptive(gp.axes[gasAxisIndex], invertGas);
-    const brakePct = axisToPctAdaptive(gp.axes[brakeAxisIndex], invertBrake);
-    raw = enableReverse ? (gasPct - brakePct) : gasPct;
-  }
-
-  const shaped = shapeSignedThrottlePct(raw);
-  throttle = enableReverse ? shaped : clamp(shaped, 0, 100);
-
-  stEl.value = String(steer);
-  thEl.value = String(throttle);
-  updateUI();
-  send();
-
-  requestAnimationFrame(poll);
-}
-
-syncPedalVars();
-syncStopButton();
-refreshGamepads();
-updateUI();
-poll();
+syncDebugLabels();
+refreshAll();
+setInterval(refreshAll, 1000);
 </script>
-
 </body>
 </html>
 )HTML";
