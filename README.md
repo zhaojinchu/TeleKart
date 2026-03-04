@@ -42,3 +42,13 @@ python3 controller.py --vehicle-url http://TELEKART_IP --vehicle-name telekart-0
 
 ## Camera
 Production video should run on a separate SBC and stream RTSP to the laptop. The control ESP32 intentionally does not host the camera pipeline.
+
+## Arduino Compile Code
+arduino-cli compile --fqbn esp32:esp32:esp32 /Users/zhaojin/Projects/TeleKart
+
+arduino-cli board list
+
+arduino-cli upload \
+  -p /dev/cu.usbserial-XXXX \
+  --fqbn esp32:esp32:esp32 \
+  /Users/zhaojin/Projects/TeleKart
