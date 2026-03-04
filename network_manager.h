@@ -12,6 +12,7 @@ bool network_manager_update_network(
     const String& vehicleName,
     const String& sharedKey,
     bool fallbackApEnabled);
+void network_manager_save_calibration();
 
 bool network_manager_is_station_connected();
 IPAddress network_manager_primary_ip();

@@ -33,15 +33,21 @@ void applyOutputs(int throttlePct, int steerPct) {
   throttlePct = clampInt(throttlePct, -100, 100);
   steerPct    = clampInt(steerPct, -100, 100);
 
-  // -------- Steering: symmetric around center --------
+  // -------- Steering: center + per-side range scaling --------
   int centerUs = steerCenterUs + steeringTrim * STEER_TRIM_US_PER_UNIT;
   centerUs = clampInt(centerUs, STEER_MIN_US + 20, STEER_MAX_US - 20);
 
   int leftAvail  = centerUs - STEER_MIN_US;
   int rightAvail = STEER_MAX_US - centerUs;
-  int travelUs   = (leftAvail < rightAvail) ? leftAvail : rightAvail;
+  int leftTravelUs = (leftAvail * clampInt(steerLeftRangePct, 0, 100)) / 100;
+  int rightTravelUs = (rightAvail * clampInt(steerRightRangePct, 0, 100)) / 100;
 
-  int targetSteerUs = centerUs + (travelUs * steerPct) / 100;
+  int targetSteerUs = centerUs;
+  if (steerPct >= 0) {
+    targetSteerUs = centerUs + (rightTravelUs * steerPct) / 100;
+  } else {
+    targetSteerUs = centerUs + (leftTravelUs * steerPct) / 100;
+  }
   targetSteerUs = clampInt(targetSteerUs, STEER_MIN_US, STEER_MAX_US);
 
   int steerDeltaUs = targetSteerUs - appliedSteerUs;

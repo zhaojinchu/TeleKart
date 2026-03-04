@@ -45,6 +45,10 @@ void saveConfig() {
   prefs.putString("vehicle", networkConfig.vehicleName);
   prefs.putString("shared", networkConfig.sharedKey);
   prefs.putBool("fallback", networkConfig.fallbackApEnabled);
+  prefs.putInt("trim", steeringTrim);
+  prefs.putInt("center", steerCenterUs);
+  prefs.putInt("range_l", steerLeftRangePct);
+  prefs.putInt("range_r", steerRightRangePct);
 }
 
 void loadConfig() {
@@ -58,6 +62,22 @@ void loadConfig() {
   networkConfig.vehicleName = prefs.getString("vehicle", DEFAULT_VEHICLE_NAME);
   networkConfig.sharedKey = prefs.getString("shared", DEFAULT_SHARED_KEY);
   networkConfig.fallbackApEnabled = prefs.getBool("fallback", DEFAULT_FALLBACK_AP_ON);
+
+  steeringTrim = prefs.getInt("trim", steeringTrim);
+  if (steeringTrim < -100) steeringTrim = -100;
+  if (steeringTrim > 100) steeringTrim = 100;
+
+  steerCenterUs = prefs.getInt("center", steerCenterUs);
+  if (steerCenterUs < 1200) steerCenterUs = 1200;
+  if (steerCenterUs > 2400) steerCenterUs = 2400;
+
+  steerLeftRangePct = prefs.getInt("range_l", DEFAULT_STEER_LEFT_RANGE_PCT);
+  if (steerLeftRangePct < 0) steerLeftRangePct = 0;
+  if (steerLeftRangePct > 100) steerLeftRangePct = 100;
+
+  steerRightRangePct = prefs.getInt("range_r", DEFAULT_STEER_RIGHT_RANGE_PCT);
+  if (steerRightRangePct < 0) steerRightRangePct = 0;
+  if (steerRightRangePct > 100) steerRightRangePct = 100;
 }
 
 void stopMdns() {
@@ -191,6 +211,10 @@ bool network_manager_update_network(
   saveConfig();
   beginStationConnect();
   return true;
+}
+
+void network_manager_save_calibration() {
+  saveConfig();
 }
 
 bool network_manager_is_station_connected() {

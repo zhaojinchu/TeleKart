@@ -84,6 +84,8 @@ extern DiagnosticsState diagnosticsState;
 // Calibration state
 extern int steeringTrim;   // -100..100
 extern int steerCenterUs;  // microseconds center
+extern int steerLeftRangePct;   // 0..100, scales center->left travel
+extern int steerRightRangePct;  // 0..100, scales center->right travel
 extern int appliedSteerUs; // last steering pulse written
 
 // Loop timing

@@ -169,7 +169,9 @@ String buildConfigJson() {
       "\"shared_key\":\"" + escapeJson(networkConfig.sharedKey) + "\","
       "\"fallback_ap_enabled\":" + String(networkConfig.fallbackApEnabled ? "true" : "false") + ","
       "\"steering_trim\":" + String(steeringTrim) + ","
-      "\"steer_center_us\":" + String(steerCenterUs) +
+      "\"steer_center_us\":" + String(steerCenterUs) + ","
+      "\"steer_left_range_pct\":" + String(steerLeftRangePct) + ","
+      "\"steer_right_range_pct\":" + String(steerRightRangePct) +
       "}";
 }
 
@@ -234,10 +236,19 @@ void handlePostConfig() {
     steerCenterUs = clampInt(value, 1200, 2400);
   }
 
+  if (jsonGetInt(body, "steer_left_range_pct", value)) {
+    steerLeftRangePct = clampInt(value, 0, 100);
+  }
+
+  if (jsonGetInt(body, "steer_right_range_pct", value)) {
+    steerRightRangePct = clampInt(value, 0, 100);
+  }
+
   if (jsonGetBool(body, "clear_estop", clearEstop) && clearEstop) {
     drive_control_clear_estop();
   }
 
+  network_manager_save_calibration();
   sendJson(200, buildConfigJson());
 }
 

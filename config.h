@@ -27,6 +27,8 @@ static const uint16_t CONTROL_PORT = 4210;
 static const int STEER_MIN_US = 1100;
 static const int STEER_MAX_US = 2500;
 static const int STEER_TRIM_US_PER_UNIT = 3;
+static const int DEFAULT_STEER_LEFT_RANGE_PCT = 100;
+static const int DEFAULT_STEER_RIGHT_RANGE_PCT = 100;
 
 // ================== ESC SETTINGS ==================
 static const int ESC_NEUTRAL_US = 1500;

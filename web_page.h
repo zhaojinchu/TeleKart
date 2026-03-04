@@ -148,13 +148,27 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
 
     <section class="card">
       <h2>Calibration</h2>
+      <p class="tiny">Center shifts the steering neutral point in microseconds. Trim is a quick fine offset around that center.</p>
       <label for="steeringTrim">Steering Trim</label>
       <input id="steeringTrim" type="number" min="-100" max="100" value="0">
 
       <label for="steerCenterUs">Steering Center (us)</label>
       <input id="steerCenterUs" type="number" min="1200" max="2400" value="2000">
 
+      <div class="row">
+        <div>
+          <label for="steerLeftRangePct">Left Range (%)</label>
+          <input id="steerLeftRangePct" type="number" min="0" max="100" value="100">
+        </div>
+        <div>
+          <label for="steerRightRangePct">Right Range (%)</label>
+          <input id="steerRightRangePct" type="number" min="0" max="100" value="100">
+        </div>
+      </div>
+
       <button onclick="saveCalibration()">Save Calibration</button>
+      <button class="alt" onclick="recenterCalibration()">Recenter (apply trim into center)</button>
+      <button class="alt" onclick="centerWheelsNow()">Center Wheels Now</button>
       <button class="alt" onclick="clearEstop()">Clear E-Stop</button>
       <button class="warn" onclick="triggerEstop()">Trigger E-Stop</button>
       <div class="status" id="calMsg"></div>
@@ -201,11 +215,14 @@ const sharedKeyEl = document.getElementById("sharedKey");
 const fallbackApEl = document.getElementById("fallbackAp");
 const steeringTrimEl = document.getElementById("steeringTrim");
 const steerCenterUsEl = document.getElementById("steerCenterUs");
+const steerLeftRangePctEl = document.getElementById("steerLeftRangePct");
+const steerRightRangePctEl = document.getElementById("steerRightRangePct");
 const debugThrottleEl = document.getElementById("debugThrottle");
 const debugSteerEl = document.getElementById("debugSteer");
 const debugThrottleValueEl = document.getElementById("debugThrottleValue");
 const debugSteerValueEl = document.getElementById("debugSteerValue");
 let debugRepeatId = null;
+const STEER_TRIM_US_PER_UNIT = 3;
 
 async function getJson(url) {
   const response = await fetch(url, { cache: "no-store" });
@@ -250,6 +267,10 @@ function syncCheckbox(input, checked) {
   }
 }
 
+function clampInt(value, lo, hi) {
+  return Math.max(lo, Math.min(hi, value));
+}
+
 async function refreshAll() {
   try {
     const [status, config] = await Promise.all([
@@ -264,6 +285,8 @@ async function refreshAll() {
     syncCheckbox(fallbackApEl, config.fallback_ap_enabled);
     syncTextInput(steeringTrimEl, String(config.steering_trim ?? 0));
     syncTextInput(steerCenterUsEl, String(config.steer_center_us ?? 2000));
+    syncTextInput(steerLeftRangePctEl, String(config.steer_left_range_pct ?? 100));
+    syncTextInput(steerRightRangePctEl, String(config.steer_right_range_pct ?? 100));
     statusMsgEl.textContent = "Status refreshed at " + new Date().toLocaleTimeString();
   } catch (error) {
     statusMsgEl.textContent = "Refresh failed: " + error.message;
@@ -294,11 +317,55 @@ async function saveCalibration() {
     await postJson("/api/config", {
       steering_trim: Number(steeringTrimEl.value),
       steer_center_us: Number(steerCenterUsEl.value),
+      steer_left_range_pct: Number(steerLeftRangePctEl.value),
+      steer_right_range_pct: Number(steerRightRangePctEl.value),
     });
     calMsgEl.textContent = "Calibration saved.";
     refreshAll();
   } catch (error) {
     calMsgEl.textContent = "Save failed: " + error.message;
+  }
+}
+
+async function recenterCalibration() {
+  calMsgEl.textContent = "Recentering...";
+  const trim = Number(steeringTrimEl.value);
+  const center = Number(steerCenterUsEl.value);
+  const safeTrim = Number.isFinite(trim) ? trim : 0;
+  const safeCenter = Number.isFinite(center) ? center : 2000;
+  const nextCenter = clampInt(
+    Math.round(safeCenter + (safeTrim * STEER_TRIM_US_PER_UNIT)),
+    1200,
+    2400
+  );
+  const leftRange = clampInt(Number(steerLeftRangePctEl.value) || 0, 0, 100);
+  const rightRange = clampInt(Number(steerRightRangePctEl.value) || 0, 0, 100);
+
+  try {
+    await postJson("/api/config", {
+      steering_trim: 0,
+      steer_center_us: nextCenter,
+      steer_left_range_pct: leftRange,
+      steer_right_range_pct: rightRange,
+    });
+    steeringTrimEl.value = "0";
+    steerCenterUsEl.value = String(nextCenter);
+    calMsgEl.textContent = "Recentered and saved.";
+    refreshAll();
+  } catch (error) {
+    calMsgEl.textContent = "Recenter failed: " + error.message;
+  }
+}
+
+async function centerWheelsNow() {
+  try {
+    const response = await fetch("/cmd?th=0&st=0", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    calMsgEl.textContent = "Center command sent.";
+  } catch (error) {
+    calMsgEl.textContent = "Center failed: " + error.message;
   }
 }
 
