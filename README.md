@@ -53,3 +53,5 @@ arduino-cli upload \
   --fqbn esp32:esp32:esp32 \
   /Users/zhaojin/Projects/TeleKart
 
+## Command
+python controller.py --vehicle-url http://172.26.206.14 --vehicle-name telekart-01 --auth-key changeme-telekart --controller-port 4211 --pedal-source axes --throttle-axis 5 --brake-axis 4 --input-debug
