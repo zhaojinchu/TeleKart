@@ -77,13 +77,18 @@ bool jsonGetUInt32(const String& body, const char* key, uint32_t& out) {
     return false;
   }
 
+  uint64_t value = 0;
   int end = index;
   while (end < body.length() && (body[end] >= '0' && body[end] <= '9')) {
+    value = (value * 10ULL) + static_cast<uint32_t>(body[end] - '0');
+    if (value > 0xFFFFFFFFULL) {
+      return false;
+    }
     end++;
   }
 
   if (end == index) return false;
-  out = static_cast<uint32_t>(body.substring(index, end).toInt());
+  out = static_cast<uint32_t>(value);
   return true;
 }
 
@@ -161,6 +166,7 @@ String buildConfigJson() {
       "\"ssid\":\"" + escapeJson(networkConfig.staSsid) + "\","
       "\"has_password\":" + String(networkConfig.staPassword.length() ? "true" : "false") + ","
       "\"shared_key_set\":" + String(networkConfig.sharedKey.length() ? "true" : "false") + ","
+      "\"shared_key\":\"" + escapeJson(networkConfig.sharedKey) + "\","
       "\"fallback_ap_enabled\":" + String(networkConfig.fallbackApEnabled ? "true" : "false") + ","
       "\"steering_trim\":" + String(steeringTrim) + ","
       "\"steer_center_us\":" + String(steerCenterUs) +
@@ -172,6 +178,11 @@ void handleRoot() {
 }
 
 void handleCmd() {
+  if (controlSession.valid) {
+    sendJson(409, "{\"ok\":false,\"error\":\"control_session_active\"}");
+    return;
+  }
+
   int throttlePct = manualThrottlePct;
   int steerPct = manualSteerPct;
 
@@ -261,7 +272,7 @@ void handlePostNetwork() {
   if (jsonGetString(body, "vehicle_name", incoming) && incoming.length()) {
     vehicleName = incoming;
   }
-  if (jsonGetString(body, "shared_key", incoming) && incoming.length()) {
+  if (jsonGetString(body, "shared_key", incoming)) {
     sharedKey = incoming;
   }
   jsonGetBool(body, "fallback_ap_enabled", fallbackEnabled);
@@ -286,6 +297,11 @@ void handlePostPair() {
       !jsonGetUInt32(body, "controller_port", controllerPortValue) ||
       !jsonGetUInt32(body, "mac_tag", providedTag)) {
     sendJson(400, "{\"ok\":false,\"error\":\"invalid_json\"}");
+    return;
+  }
+
+  if (controllerPortValue == 0 || controllerPortValue > 65535UL) {
+    sendJson(400, "{\"ok\":false,\"error\":\"invalid_port\"}");
     return;
   }
 

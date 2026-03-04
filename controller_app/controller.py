@@ -153,7 +153,22 @@ def pair_with_vehicle(config: ControllerConfig, sock: socket.socket) -> tuple[st
             reply = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         details = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Pairing failed: {error.code} {details}") from error
+        hint = ""
+        try:
+            reply = json.loads(details)
+        except json.JSONDecodeError:
+            reply = None
+
+        if isinstance(reply, dict):
+            error_code = reply.get("error")
+            if error_code == "bad_auth":
+                hint = " Verify the vehicle shared auth key matches --auth-key."
+            elif error_code == "vehicle_name_mismatch":
+                hint = " Verify --vehicle-name matches the vehicle configuration."
+            elif error_code == "invalid_port":
+                hint = " Verify --controller-port is between 1 and 65535."
+
+        raise RuntimeError(f"Pairing failed: {error.code} {details}{hint}") from error
     except urllib.error.URLError as error:
         raise RuntimeError(f"Pairing failed: {error.reason}") from error
 
@@ -234,7 +249,7 @@ def main() -> int:
     for field_name, default_value in vars(defaults).items():
         argument = "--" + field_name.replace("_", "-")
         if isinstance(default_value, bool):
-            parser.add_argument(argument, dest=field_name, action="store_true", default=None)
+            parser.add_argument(argument, dest=field_name, action=argparse.BooleanOptionalAction, default=None)
         elif isinstance(default_value, int):
             parser.add_argument(argument, dest=field_name, type=int)
         elif isinstance(default_value, float):

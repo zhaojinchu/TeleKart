@@ -162,7 +162,7 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
 
     <section class="card">
       <h2>Debug Drive</h2>
-      <p class="tiny">This is a bench-only direct HTTP control path. It is not the primary driving mode.</p>
+      <p class="tiny">This is a bench-only direct HTTP control path. It is not the primary driving mode, and it is blocked while a paired controller session is active.</p>
 
       <div class="row">
         <div>
@@ -238,6 +238,18 @@ function syncDebugLabels() {
   debugSteerValueEl.textContent = debugSteerEl.value;
 }
 
+function syncTextInput(input, value) {
+  if (document.activeElement !== input) {
+    input.value = value;
+  }
+}
+
+function syncCheckbox(input, checked) {
+  if (document.activeElement !== input) {
+    input.checked = !!checked;
+  }
+}
+
 async function refreshAll() {
   try {
     const [status, config] = await Promise.all([
@@ -246,11 +258,12 @@ async function refreshAll() {
     ]);
 
     renderStatus(status);
-    ssidEl.value = config.ssid || "";
-    vehicleNameEl.value = config.vehicle_name || "";
-    fallbackApEl.checked = !!config.fallback_ap_enabled;
-    steeringTrimEl.value = config.steering_trim ?? 0;
-    steerCenterUsEl.value = config.steer_center_us ?? 2000;
+    syncTextInput(ssidEl, config.ssid || "");
+    syncTextInput(vehicleNameEl, config.vehicle_name || "");
+    syncTextInput(sharedKeyEl, config.shared_key || "");
+    syncCheckbox(fallbackApEl, config.fallback_ap_enabled);
+    syncTextInput(steeringTrimEl, String(config.steering_trim ?? 0));
+    syncTextInput(steerCenterUsEl, String(config.steer_center_us ?? 2000));
     statusMsgEl.textContent = "Status refreshed at " + new Date().toLocaleTimeString();
   } catch (error) {
     statusMsgEl.textContent = "Refresh failed: " + error.message;
@@ -268,7 +281,6 @@ async function saveNetwork() {
       fallback_ap_enabled: fallbackApEl.checked,
     });
     passwordEl.value = "";
-    sharedKeyEl.value = "";
     networkMsgEl.textContent = "Network config saved. The ESP32 is reconnecting.";
     setTimeout(refreshAll, 1200);
   } catch (error) {
@@ -315,7 +327,10 @@ async function sendDebug() {
     const throttle = Number(debugThrottleEl.value);
     const steer = Number(debugSteerEl.value);
     const url = "/cmd?th=" + encodeURIComponent(throttle) + "&st=" + encodeURIComponent(steer);
-    await fetch(url, { cache: "no-store" });
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
     debugMsgEl.textContent = "Debug command sent.";
 
     if (debugRepeatId !== null) {
@@ -325,7 +340,14 @@ async function sendDebug() {
 
     if (throttle !== 0 || steer !== 0) {
       debugRepeatId = setInterval(() => {
-        fetch(url, { cache: "no-store" }).catch(() => {});
+        fetch(url, { cache: "no-store" })
+          .then((repeatResponse) => {
+            if (!repeatResponse.ok && debugRepeatId !== null) {
+              clearInterval(debugRepeatId);
+              debugRepeatId = null;
+            }
+          })
+          .catch(() => {});
       }, 80);
     }
   } catch (error) {

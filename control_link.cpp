@@ -226,6 +226,14 @@ bool control_link_pair(
     return false;
   }
 
+  if (controlSession.valid &&
+      remoteIp == controlSession.controllerIp &&
+      controllerPort == controlSession.controllerPort &&
+      controllerNonce == controlSession.controllerNonce) {
+    responseJson = "{\"ok\":false,\"error\":\"duplicate_pair\"}";
+    return false;
+  }
+
   uint32_t now = millis();
   controlSession.sessionId = esp_random();
   if (controlSession.sessionId == 0) {
