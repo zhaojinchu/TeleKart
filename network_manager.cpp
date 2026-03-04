@@ -72,12 +72,12 @@ void loadConfig() {
   if (steerCenterUs > 2400) steerCenterUs = 2400;
 
   steerLeftRangePct = prefs.getInt("range_l", DEFAULT_STEER_LEFT_RANGE_PCT);
-  if (steerLeftRangePct < 0) steerLeftRangePct = 0;
-  if (steerLeftRangePct > 100) steerLeftRangePct = 100;
+  if (steerLeftRangePct < STEER_RANGE_PCT_MIN) steerLeftRangePct = STEER_RANGE_PCT_MIN;
+  if (steerLeftRangePct > STEER_RANGE_PCT_MAX) steerLeftRangePct = STEER_RANGE_PCT_MAX;
 
   steerRightRangePct = prefs.getInt("range_r", DEFAULT_STEER_RIGHT_RANGE_PCT);
-  if (steerRightRangePct < 0) steerRightRangePct = 0;
-  if (steerRightRangePct > 100) steerRightRangePct = 100;
+  if (steerRightRangePct < STEER_RANGE_PCT_MIN) steerRightRangePct = STEER_RANGE_PCT_MIN;
+  if (steerRightRangePct > STEER_RANGE_PCT_MAX) steerRightRangePct = STEER_RANGE_PCT_MAX;
 }
 
 void stopMdns() {

@@ -14,6 +14,11 @@ static int mapPercentToUsSymmetric(int pct, int negUs, int zeroUs, int posUs) {
   else          return zeroUs + ((zeroUs - negUs) * pct) / 100;
 }
 
+static int computeSteeringCenterUs() {
+  int centerUs = steerCenterUs + steeringTrim * STEER_TRIM_US_PER_UNIT;
+  return clampInt(centerUs, STEER_MIN_US + 20, STEER_MAX_US - 20);
+}
+
 static const int STEER_OUTPUT_HOLD_US = 8;
 static const int STEER_OUTPUT_MAX_STEP_US = 40;
 
@@ -29,18 +34,22 @@ void rc_output_init() {
   escServo.writeMicroseconds(ESC_NEUTRAL_US);
 }
 
+void center_steering_now() {
+  appliedSteerUs = computeSteeringCenterUs();
+  steerServo.writeMicroseconds(appliedSteerUs);
+}
+
 void applyOutputs(int throttlePct, int steerPct) {
   throttlePct = clampInt(throttlePct, -100, 100);
   steerPct    = clampInt(steerPct, -100, 100);
 
   // -------- Steering: center + per-side range scaling --------
-  int centerUs = steerCenterUs + steeringTrim * STEER_TRIM_US_PER_UNIT;
-  centerUs = clampInt(centerUs, STEER_MIN_US + 20, STEER_MAX_US - 20);
+  int centerUs = computeSteeringCenterUs();
 
   int leftAvail  = centerUs - STEER_MIN_US;
   int rightAvail = STEER_MAX_US - centerUs;
-  int leftTravelUs = (leftAvail * clampInt(steerLeftRangePct, 0, 100)) / 100;
-  int rightTravelUs = (rightAvail * clampInt(steerRightRangePct, 0, 100)) / 100;
+  int leftTravelUs = (leftAvail * clampInt(steerLeftRangePct, STEER_RANGE_PCT_MIN, STEER_RANGE_PCT_MAX)) / 100;
+  int rightTravelUs = (rightAvail * clampInt(steerRightRangePct, STEER_RANGE_PCT_MIN, STEER_RANGE_PCT_MAX)) / 100;
 
   int targetSteerUs = centerUs;
   if (steerPct >= 0) {

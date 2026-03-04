@@ -237,11 +237,11 @@ void handlePostConfig() {
   }
 
   if (jsonGetInt(body, "steer_left_range_pct", value)) {
-    steerLeftRangePct = clampInt(value, 0, 100);
+    steerLeftRangePct = clampInt(value, STEER_RANGE_PCT_MIN, STEER_RANGE_PCT_MAX);
   }
 
   if (jsonGetInt(body, "steer_right_range_pct", value)) {
-    steerRightRangePct = clampInt(value, 0, 100);
+    steerRightRangePct = clampInt(value, STEER_RANGE_PCT_MIN, STEER_RANGE_PCT_MAX);
   }
 
   if (jsonGetBool(body, "clear_estop", clearEstop) && clearEstop) {
@@ -250,6 +250,11 @@ void handlePostConfig() {
 
   network_manager_save_calibration();
   sendJson(200, buildConfigJson());
+}
+
+void handlePostCenterSteering() {
+  center_steering_now();
+  sendJson(200, "{\"ok\":true,\"steer_us\":" + String(appliedSteerUs) + "}");
 }
 
 void handlePostEstop() {
@@ -344,6 +349,7 @@ void web_handlers_init() {
   server.on("/api/network", HTTP_POST, handlePostNetwork);
   server.on("/api/pair", HTTP_POST, handlePostPair);
   server.on("/api/estop", HTTP_POST, handlePostEstop);
+  server.on("/api/center_steering", HTTP_POST, handlePostCenterSteering);
   server.onNotFound(handleNotFound);
   server.begin();
 }

@@ -158,13 +158,14 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
       <div class="row">
         <div>
           <label for="steerLeftRangePct">Left Range (%)</label>
-          <input id="steerLeftRangePct" type="number" min="0" max="100" value="100">
+          <input id="steerLeftRangePct" type="number" min="0" max="180" value="100">
         </div>
         <div>
           <label for="steerRightRangePct">Right Range (%)</label>
-          <input id="steerRightRangePct" type="number" min="0" max="100" value="100">
+          <input id="steerRightRangePct" type="number" min="0" max="180" value="100">
         </div>
       </div>
+      <div class="tiny">Range above 100% pushes each side to full lock sooner and can help compensate side-to-side mismatch.</div>
 
       <button onclick="saveCalibration()">Save Calibration</button>
       <button class="alt" onclick="recenterCalibration()">Recenter (apply trim into center)</button>
@@ -271,6 +272,11 @@ function clampInt(value, lo, hi) {
   return Math.max(lo, Math.min(hi, value));
 }
 
+function calibrationRangeValue(input, fallback) {
+  const parsed = Number(input.value);
+  return clampInt(Number.isFinite(parsed) ? parsed : fallback, 0, 180);
+}
+
 async function refreshAll() {
   try {
     const [status, config] = await Promise.all([
@@ -314,11 +320,15 @@ async function saveNetwork() {
 async function saveCalibration() {
   calMsgEl.textContent = "Saving...";
   try {
+    const leftRange = calibrationRangeValue(steerLeftRangePctEl, 100);
+    const rightRange = calibrationRangeValue(steerRightRangePctEl, 100);
+    steerLeftRangePctEl.value = String(leftRange);
+    steerRightRangePctEl.value = String(rightRange);
     await postJson("/api/config", {
       steering_trim: Number(steeringTrimEl.value),
       steer_center_us: Number(steerCenterUsEl.value),
-      steer_left_range_pct: Number(steerLeftRangePctEl.value),
-      steer_right_range_pct: Number(steerRightRangePctEl.value),
+      steer_left_range_pct: leftRange,
+      steer_right_range_pct: rightRange,
     });
     calMsgEl.textContent = "Calibration saved.";
     refreshAll();
@@ -338,8 +348,10 @@ async function recenterCalibration() {
     1200,
     2400
   );
-  const leftRange = clampInt(Number(steerLeftRangePctEl.value) || 0, 0, 100);
-  const rightRange = clampInt(Number(steerRightRangePctEl.value) || 0, 0, 100);
+  const leftRange = calibrationRangeValue(steerLeftRangePctEl, 100);
+  const rightRange = calibrationRangeValue(steerRightRangePctEl, 100);
+  steerLeftRangePctEl.value = String(leftRange);
+  steerRightRangePctEl.value = String(rightRange);
 
   try {
     await postJson("/api/config", {
@@ -359,10 +371,7 @@ async function recenterCalibration() {
 
 async function centerWheelsNow() {
   try {
-    const response = await fetch("/cmd?th=0&st=0", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
+    await postJson("/api/center_steering", {});
     calMsgEl.textContent = "Center command sent.";
   } catch (error) {
     calMsgEl.textContent = "Center failed: " + error.message;

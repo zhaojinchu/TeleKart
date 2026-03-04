@@ -29,6 +29,8 @@ static const int STEER_MAX_US = 2500;
 static const int STEER_TRIM_US_PER_UNIT = 3;
 static const int DEFAULT_STEER_LEFT_RANGE_PCT = 100;
 static const int DEFAULT_STEER_RIGHT_RANGE_PCT = 100;
+static const int STEER_RANGE_PCT_MIN = 0;
+static const int STEER_RANGE_PCT_MAX = 180;
 
 // ================== ESC SETTINGS ==================
 static const int ESC_NEUTRAL_US = 1500;
