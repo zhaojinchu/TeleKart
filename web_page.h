@@ -283,8 +283,8 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
         <div class="meter"><div class="meter-fill" id="throttleOutBar"></div></div>
       </div>
       <div class="state-row">
-        <span class="badge" id="reverseReqBadge">Reverse Requested: OFF</span>
-        <span class="badge" id="reverseDriveBadge">Reverse Engaged: OFF</span>
+        <span class="badge" id="reversePedalBadge">Reverse Pedal: OFF</span>
+        <span class="badge" id="driveDirectionBadge">Drive Direction: NEUTRAL</span>
         <span class="badge" id="estopReqBadge">E-Stop Request: OFF</span>
         <span class="badge" id="noBrakeModeBadge">No-Brake Mode: ON</span>
       </div>
@@ -381,8 +381,8 @@ const steerCmdValueEl = document.getElementById("steerCmdValue");
 const steerCmdBarEl = document.getElementById("steerCmdBar");
 const throttleOutValueEl = document.getElementById("throttleOutValue");
 const throttleOutBarEl = document.getElementById("throttleOutBar");
-const reverseReqBadgeEl = document.getElementById("reverseReqBadge");
-const reverseDriveBadgeEl = document.getElementById("reverseDriveBadge");
+const reversePedalBadgeEl = document.getElementById("reversePedalBadge");
+const driveDirectionBadgeEl = document.getElementById("driveDirectionBadge");
 const estopReqBadgeEl = document.getElementById("estopReqBadge");
 const noBrakeModeBadgeEl = document.getElementById("noBrakeModeBadge");
 
@@ -474,13 +474,32 @@ function setBadge(el, label, on, warn) {
   el.classList.toggle("warn", !!on && !!warn);
 }
 
+function setDirectionBadge(el, throttlePct) {
+  let direction = "NEUTRAL";
+  let on = false;
+  if (throttlePct > 1.0) {
+    direction = "FORWARD";
+    on = true;
+  } else if (throttlePct < -1.0) {
+    direction = "REVERSE";
+    on = true;
+  }
+  el.textContent = "Drive Direction: " + direction;
+  el.classList.toggle("on", on);
+  el.classList.toggle("warn", direction === "REVERSE");
+}
+
 function updateDriveMonitor(status) {
-  setUnsignedMeter(throttleCmdBarEl, throttleCmdValueEl, Number(status.input_throttle_cmd_pct ?? 0));
-  setUnsignedMeter(brakeCmdBarEl, brakeCmdValueEl, Number(status.input_brake_cmd_pct ?? 0));
+  const throttleCmdPct = Number(status.input_throttle_cmd_pct ?? 0);
+  const brakeCmdPct = Number(status.input_brake_cmd_pct ?? 0);
+  const throttleOutPct = Number(status.current_throttle_pct ?? 0);
+
+  setUnsignedMeter(throttleCmdBarEl, throttleCmdValueEl, throttleCmdPct);
+  setUnsignedMeter(brakeCmdBarEl, brakeCmdValueEl, brakeCmdPct);
   setSignedMeter(steerCmdBarEl, steerCmdValueEl, Number(status.input_steer_cmd_pct ?? 0));
-  setSignedMeter(throttleOutBarEl, throttleOutValueEl, Number(status.current_throttle_pct ?? 0));
-  setBadge(reverseReqBadgeEl, "Reverse Requested", !!status.reverse_requested, false);
-  setBadge(reverseDriveBadgeEl, "Reverse Engaged", !!status.reverse_drive, false);
+  setSignedMeter(throttleOutBarEl, throttleOutValueEl, throttleOutPct);
+  setBadge(reversePedalBadgeEl, "Reverse Pedal", brakeCmdPct > 2.0, false);
+  setDirectionBadge(driveDirectionBadgeEl, throttleOutPct);
   setBadge(estopReqBadgeEl, "E-Stop Request", !!status.estop_requested, true);
   setBadge(noBrakeModeBadgeEl, "No-Brake Mode", !!status.no_brake_mode, false);
 }

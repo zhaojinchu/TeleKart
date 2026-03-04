@@ -45,13 +45,21 @@ python3 controller.py \
 
 ## Reverse With Pedals
 - By default, braking pedal input can assert reverse request automatically when throttle is near zero.
-- `pedal_source` supports `buttons` and `axes` (default `buttons` for B6/B7-style wheels).
+- `pedal_source` supports `buttons`, `axes`, and `auto` (default `buttons`).
 - For button pedals, set `throttle_button` and `brake_button` (for your wheel: B7 throttle, B6 brake).
 - Tune with config keys:
   - `auto_reverse_from_brake` (default `true`)
   - `reverse_from_brake_threshold` (default `0.12`)
   - `reverse_from_throttle_max` (default `0.05`)
 - If your wheel has a dedicated reverse button, set `reverse_button` to that index; it takes priority.
+
+## Input Debugging
+- Enable `input_debug` to print live axis/button snapshots and detected pedal source.
+- Adjust `input_debug_interval_s` if logs are too fast.
+- Quick test:
+```bash
+python controller.py --vehicle-url http://TELEKART_IP --vehicle-name telekart-01 --auth-key YOUR_SHARED_KEY --pedal-source buttons --throttle-button 7 --brake-button 6 --input-debug
+```
 
 ## Notes
 - The app binds to `controller_port` locally and the ESP32 sends telemetry back to that same port.

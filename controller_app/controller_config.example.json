@@ -20,5 +20,7 @@
   "reverse_from_brake_threshold": 0.12,
   "reverse_from_throttle_max": 0.05,
   "reverse_button": -1,
-  "estop_button": -1
+  "estop_button": -1,
+  "input_debug": false,
+  "input_debug_interval_s": 0.6
 }

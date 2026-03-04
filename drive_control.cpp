@@ -168,6 +168,13 @@ void drive_control_poll(uint32_t now) {
   vehicleState.braking = false;
 
   if (!diagnosticsState.estopLatched && !diagnosticsState.inFailsafe) {
+    if (noBrakeMode) {
+      int forwardPct = clampInt(static_cast<int>(lroundf(vehicleState.filteredThrottlePct * 100.0f)), 0, 100);
+      int reversePct = clampInt(static_cast<int>(lroundf(shapePedal(rawBrake) * 100.0f)), 0, 100);
+      desiredThrottlePct = clampInt(forwardPct - reversePct, -100, 100);
+      vehicleState.reverseDrive = desiredThrottlePct < 0;
+      vehicleState.reverseArmed = false;
+    } else {
     if (!vehicleState.reverseDrive) {
       if (vehicleState.filteredThrottlePct > 0.0f) {
         vehicleState.reverseArmed = false;
@@ -216,6 +223,7 @@ void drive_control_poll(uint32_t now) {
         float shapedReverse = shapePedal(reversePedal);
         desiredThrottlePct = -clampInt(static_cast<int>(lroundf(shapedReverse * 65.0f)), 0, 65);
       }
+    }
     }
   }
 
