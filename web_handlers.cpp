@@ -131,6 +131,8 @@ bool jsonGetBool(const String& body, const char* key, bool& out) {
 
 String buildStatusJson() {
   IPAddress ip = network_manager_primary_ip();
+  bool reverseRequested = (driveInput.flags & CONTROL_FLAG_REVERSE_REQ) != 0;
+  bool estopRequested = (driveInput.flags & CONTROL_FLAG_ESTOP) != 0;
 
   return
       "{"
@@ -152,7 +154,12 @@ String buildStatusJson() {
       "\"auth_failures\":" + String(diagnosticsState.authFailureCount) + ","
       "\"estop_latched\":" + String(diagnosticsState.estopLatched ? "true" : "false") + ","
       "\"reverse_drive\":" + String(vehicleState.reverseDrive ? "true" : "false") + ","
+      "\"reverse_requested\":" + String(reverseRequested ? "true" : "false") + ","
+      "\"estop_requested\":" + String(estopRequested ? "true" : "false") + ","
       "\"manual_override\":" + String(manualOverrideActive ? "true" : "false") + ","
+      "\"input_steer_cmd_pct\":" + String(static_cast<float>(driveInput.steeringCmd) / 10.0f, 1) + ","
+      "\"input_throttle_cmd_pct\":" + String(static_cast<float>(driveInput.throttleCmd) / 10.0f, 1) + ","
+      "\"input_brake_cmd_pct\":" + String(static_cast<float>(driveInput.brakeCmd) / 10.0f, 1) + ","
       "\"virtual_speed_pct\":" + String(vehicleState.virtualSpeedPct, 1) + ","
       "\"current_steer_pct\":" + String(vehicleState.currentSteerPct, 1) + ","
       "\"current_throttle_pct\":" + String(vehicleState.currentThrottlePct) +

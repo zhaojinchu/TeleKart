@@ -13,6 +13,9 @@
   "steer_filter_alpha": 0.25,
   "invert_throttle": false,
   "invert_brake": false,
+  "auto_reverse_from_brake": true,
+  "reverse_from_brake_threshold": 0.12,
+  "reverse_from_throttle_max": 0.05,
   "reverse_button": -1,
   "estop_button": -1
 }

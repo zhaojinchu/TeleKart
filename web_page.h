@@ -106,6 +106,51 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
     color: var(--muted);
     min-height: 1.2em;
   }
+  .metric {
+    margin-top: 10px;
+  }
+  .metric-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .meter {
+    height: 10px;
+    border-radius: 999px;
+    background: #e6dcc9;
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 120ms linear;
+  }
+  .state-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .badge {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #e9e2d2;
+    color: var(--ink);
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .badge.on {
+    background: var(--accent);
+    color: white;
+  }
+  .badge.warn {
+    background: var(--warn);
+    color: white;
+  }
   @media (max-width: 640px) {
     .row {
       grid-template-columns: 1fr;
@@ -124,6 +169,31 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
       <button class="alt" onclick="refreshAll()">Refresh Now</button>
       <pre id="statusView">Loading...</pre>
       <div class="status" id="statusMsg"></div>
+    </section>
+
+    <section class="card">
+      <h2>Drive Monitor</h2>
+      <div class="metric">
+        <div class="metric-head"><span>Throttle Pedal Input</span><span id="throttleCmdValue">0.0%</span></div>
+        <div class="meter"><div class="meter-fill" id="throttleCmdBar"></div></div>
+      </div>
+      <div class="metric">
+        <div class="metric-head"><span>Brake Pedal Input</span><span id="brakeCmdValue">0.0%</span></div>
+        <div class="meter"><div class="meter-fill" id="brakeCmdBar"></div></div>
+      </div>
+      <div class="metric">
+        <div class="metric-head"><span>Steering Command</span><span id="steerCmdValue">0.0%</span></div>
+        <div class="meter"><div class="meter-fill" id="steerCmdBar"></div></div>
+      </div>
+      <div class="metric">
+        <div class="metric-head"><span>Throttle Output</span><span id="throttleOutValue">0.0%</span></div>
+        <div class="meter"><div class="meter-fill" id="throttleOutBar"></div></div>
+      </div>
+      <div class="state-row">
+        <span class="badge" id="reverseReqBadge">Reverse Requested: OFF</span>
+        <span class="badge" id="reverseDriveBadge">Reverse Engaged: OFF</span>
+        <span class="badge" id="estopReqBadge">E-Stop Request: OFF</span>
+      </div>
     </section>
 
     <section class="card">
@@ -208,6 +278,17 @@ const statusMsgEl = document.getElementById("statusMsg");
 const networkMsgEl = document.getElementById("networkMsg");
 const calMsgEl = document.getElementById("calMsg");
 const debugMsgEl = document.getElementById("debugMsg");
+const throttleCmdValueEl = document.getElementById("throttleCmdValue");
+const throttleCmdBarEl = document.getElementById("throttleCmdBar");
+const brakeCmdValueEl = document.getElementById("brakeCmdValue");
+const brakeCmdBarEl = document.getElementById("brakeCmdBar");
+const steerCmdValueEl = document.getElementById("steerCmdValue");
+const steerCmdBarEl = document.getElementById("steerCmdBar");
+const throttleOutValueEl = document.getElementById("throttleOutValue");
+const throttleOutBarEl = document.getElementById("throttleOutBar");
+const reverseReqBadgeEl = document.getElementById("reverseReqBadge");
+const reverseDriveBadgeEl = document.getElementById("reverseDriveBadge");
+const estopReqBadgeEl = document.getElementById("estopReqBadge");
 
 const ssidEl = document.getElementById("ssid");
 const passwordEl = document.getElementById("password");
@@ -272,6 +353,40 @@ function clampInt(value, lo, hi) {
   return Math.max(lo, Math.min(hi, value));
 }
 
+function clampFloat(value, lo, hi) {
+  return Math.max(lo, Math.min(hi, value));
+}
+
+function setUnsignedMeter(barEl, valueEl, valuePct) {
+  const clamped = clampFloat(valuePct, 0, 100);
+  barEl.style.width = clamped.toFixed(1) + "%";
+  barEl.style.background = "var(--accent)";
+  valueEl.textContent = clamped.toFixed(1) + "%";
+}
+
+function setSignedMeter(barEl, valueEl, valuePct) {
+  const clamped = clampFloat(valuePct, -100, 100);
+  barEl.style.width = Math.abs(clamped).toFixed(1) + "%";
+  barEl.style.background = clamped < 0 ? "var(--warn)" : "var(--accent)";
+  valueEl.textContent = clamped.toFixed(1) + "%";
+}
+
+function setBadge(el, label, on, warn) {
+  el.textContent = label + ": " + (on ? "ON" : "OFF");
+  el.classList.toggle("on", !!on && !warn);
+  el.classList.toggle("warn", !!on && !!warn);
+}
+
+function updateDriveMonitor(status) {
+  setUnsignedMeter(throttleCmdBarEl, throttleCmdValueEl, Number(status.input_throttle_cmd_pct ?? 0));
+  setUnsignedMeter(brakeCmdBarEl, brakeCmdValueEl, Number(status.input_brake_cmd_pct ?? 0));
+  setSignedMeter(steerCmdBarEl, steerCmdValueEl, Number(status.input_steer_cmd_pct ?? 0));
+  setSignedMeter(throttleOutBarEl, throttleOutValueEl, Number(status.current_throttle_pct ?? 0));
+  setBadge(reverseReqBadgeEl, "Reverse Requested", !!status.reverse_requested, false);
+  setBadge(reverseDriveBadgeEl, "Reverse Engaged", !!status.reverse_drive, false);
+  setBadge(estopReqBadgeEl, "E-Stop Request", !!status.estop_requested, true);
+}
+
 function calibrationRangeValue(input, fallback) {
   const parsed = Number(input.value);
   return clampInt(Number.isFinite(parsed) ? parsed : fallback, 0, 180);
@@ -285,6 +400,7 @@ async function refreshAll() {
     ]);
 
     renderStatus(status);
+    updateDriveMonitor(status);
     syncTextInput(ssidEl, config.ssid || "");
     syncTextInput(vehicleNameEl, config.vehicle_name || "");
     syncTextInput(sharedKeyEl, config.shared_key || "");

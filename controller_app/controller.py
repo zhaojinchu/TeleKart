@@ -47,6 +47,9 @@ class ControllerConfig:
     steer_filter_alpha: float = 0.25
     invert_throttle: bool = False
     invert_brake: bool = False
+    auto_reverse_from_brake: bool = True
+    reverse_from_brake_threshold: float = 0.12
+    reverse_from_throttle_max: float = 0.05
     reverse_button: int = -1
     estop_button: int = -1
 
@@ -350,6 +353,12 @@ def main() -> int:
                 )
 
                 if config.reverse_button >= 0 and joystick.get_button(config.reverse_button):
+                    flags |= FLAG_REVERSE
+                elif (
+                    config.auto_reverse_from_brake
+                    and brake >= config.reverse_from_brake_threshold
+                    and throttle <= config.reverse_from_throttle_max
+                ):
                     flags |= FLAG_REVERSE
                 if config.estop_button >= 0 and joystick.get_button(config.estop_button):
                     flags |= FLAG_ESTOP

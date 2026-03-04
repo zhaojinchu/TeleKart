@@ -43,6 +43,14 @@ python3 controller.py \
 - `Space`: e-stop
 - `Esc`: quit
 
+## Reverse With Pedals
+- By default, braking pedal input can assert reverse request automatically when throttle is near zero.
+- Tune with config keys:
+  - `auto_reverse_from_brake` (default `true`)
+  - `reverse_from_brake_threshold` (default `0.12`)
+  - `reverse_from_throttle_max` (default `0.05`)
+- If your wheel has a dedicated reverse button, set `reverse_button` to that index; it takes priority.
+
 ## Notes
 - The app binds to `controller_port` locally and the ESP32 sends telemetry back to that same port.
 - If you want in-window video preview, install `opencv-python` separately.
