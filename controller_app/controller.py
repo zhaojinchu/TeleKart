@@ -42,6 +42,9 @@ class ControllerConfig:
     steer_axis: int = 0
     throttle_axis: int = 2
     brake_axis: int = 5
+    pedal_source: str = "buttons"  # buttons or axes
+    throttle_button: int = 7
+    brake_button: int = 6
     steer_deadzone: float = 0.05
     pedal_deadzone: float = 0.03
     steer_filter_alpha: float = 0.25
@@ -211,6 +214,12 @@ def signed_axis(value: float, deadzone: float) -> float:
     return max(-1.0, min(1.0, value))
 
 
+def button_to_unit(joystick: pygame.joystick.JoystickType, button_index: int) -> float:
+    if button_index < 0 or button_index >= joystick.get_numbuttons():
+        return 0.0
+    return 1.0 if joystick.get_button(button_index) else 0.0
+
+
 def print_telemetry(packet: tuple[int, ...]) -> None:
     (
         _version,
@@ -264,6 +273,10 @@ def main() -> int:
 
     config = load_config(args.config)
     config = apply_cli_overrides(config, args)
+    config.pedal_source = str(config.pedal_source).strip().lower()
+    if config.pedal_source not in {"axes", "buttons"}:
+        print(f"Unknown pedal_source '{config.pedal_source}', falling back to 'buttons'.")
+        config.pedal_source = "buttons"
 
     pygame.init()
     pygame.joystick.init()
@@ -274,6 +287,10 @@ def main() -> int:
         joystick = pygame.joystick.Joystick(0)
         joystick.init()
         print(f"Using joystick: {joystick.get_name()}")
+        if config.pedal_source == "buttons":
+            print(f"Pedals using buttons: throttle=B{config.throttle_button}, brake=B{config.brake_button}")
+        else:
+            print(f"Pedals using axes: throttle={config.throttle_axis}, brake={config.brake_axis}")
     else:
         print("No joystick detected; keyboard fallback active (W/S throttle, A/D steer, R reverse, Space e-stop).")
 
@@ -341,16 +358,21 @@ def main() -> int:
 
             if joystick is not None:
                 raw_steer = signed_axis(joystick.get_axis(config.steer_axis), config.steer_deadzone)
-                throttle = axis_to_unit(
-                    joystick.get_axis(config.throttle_axis),
-                    config.pedal_deadzone,
-                    invert=config.invert_throttle,
-                )
-                brake = axis_to_unit(
-                    joystick.get_axis(config.brake_axis),
-                    config.pedal_deadzone,
-                    invert=config.invert_brake,
-                )
+
+                if config.pedal_source == "buttons":
+                    throttle = button_to_unit(joystick, config.throttle_button)
+                    brake = button_to_unit(joystick, config.brake_button)
+                else:
+                    throttle = axis_to_unit(
+                        joystick.get_axis(config.throttle_axis),
+                        config.pedal_deadzone,
+                        invert=config.invert_throttle,
+                    )
+                    brake = axis_to_unit(
+                        joystick.get_axis(config.brake_axis),
+                        config.pedal_deadzone,
+                        invert=config.invert_brake,
+                    )
 
                 if config.reverse_button >= 0 and joystick.get_button(config.reverse_button):
                     flags |= FLAG_REVERSE

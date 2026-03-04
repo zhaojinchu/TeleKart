@@ -71,6 +71,7 @@ int steeringTrim = 0;
 int steerCenterUs = 2000;
 int steerLeftRangePct = DEFAULT_STEER_LEFT_RANGE_PCT;
 int steerRightRangePct = DEFAULT_STEER_RIGHT_RANGE_PCT;
+bool noBrakeMode = true;
 int appliedSteerUs = 2000;
 
 uint32_t lastCommandMs = 0;

@@ -10,53 +10,104 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
 <title>TeleKart Setup</title>
 <style>
   :root {
-    color-scheme: light;
-    --bg: #f2efe8;
-    --card: #fffaf0;
-    --line: #d4c7ad;
-    --ink: #1d2428;
-    --muted: #5f6b72;
-    --accent: #0f6a73;
-    --warn: #a63c1e;
+    color-scheme: dark;
+    --bg0: #05070d;
+    --bg1: #0b1220;
+    --bg2: #101726;
+    --card: rgba(14, 21, 36, 0.86);
+    --line: rgba(129, 157, 198, 0.26);
+    --ink: #eaf3ff;
+    --muted: #95a8c5;
+    --accent: #00d9ff;
+    --accent-2: #68ff94;
+    --warn: #ff5f6d;
+    --amber: #ffb347;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
   }
   body {
     margin: 0;
-    background: radial-gradient(circle at top left, #fff9ec, var(--bg) 55%);
+    min-height: 100vh;
+    background:
+      radial-gradient(1400px 600px at -12% -18%, rgba(0, 217, 255, 0.16), transparent 62%),
+      radial-gradient(1200px 540px at 110% -10%, rgba(255, 179, 71, 0.15), transparent 64%),
+      linear-gradient(160deg, var(--bg0), var(--bg1) 42%, var(--bg2));
     color: var(--ink);
-    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-family: "Rajdhani", "Bahnschrift", "Trebuchet MS", sans-serif;
   }
   main {
-    max-width: 980px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 22px;
   }
   h1 {
-    margin: 0 0 8px;
-    font-size: 2rem;
+    margin: 0;
+    font-size: 2.2rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
   p {
     color: var(--muted);
+    margin-top: 8px;
+  }
+  .hero {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .hero-card {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px 18px;
+    background: linear-gradient(145deg, rgba(12, 18, 31, 0.92), rgba(8, 13, 23, 0.88));
+    box-shadow: var(--shadow);
+  }
+  .hero-note {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+  .hero-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .hero-badge {
+    border: 1px solid var(--line);
+    background: rgba(0, 217, 255, 0.08);
+    color: var(--ink);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 5px 10px;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 14px;
   }
   .card {
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 16px;
     padding: 18px;
-    box-shadow: 0 10px 30px rgba(46, 56, 61, 0.08);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(4px);
   }
   .card h2 {
     margin-top: 0;
-    font-size: 1.1rem;
+    margin-bottom: 10px;
+    font-size: 1.08rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
   label {
     display: block;
     margin: 12px 0 4px;
-    font-size: 0.92rem;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     color: var(--muted);
   }
   input, textarea, button {
@@ -68,21 +119,31 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
     font: inherit;
   }
   input, textarea {
-    background: #fffdf7;
+    background: rgba(8, 14, 25, 0.88);
+    color: var(--ink);
   }
   button {
     margin-top: 12px;
     cursor: pointer;
-    background: var(--accent);
+    background: linear-gradient(90deg, #00b8ff, #00d9ff 52%, #3de8ff);
     border: 0;
-    color: white;
-    font-weight: 600;
+    color: #031019;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: transform 120ms ease, filter 120ms ease;
+  }
+  button:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.08);
   }
   button.alt {
-    background: #3f4d54;
+    background: linear-gradient(90deg, #293a58, #364f76);
+    color: #d8e5ff;
   }
   button.warn {
-    background: var(--warn);
+    background: linear-gradient(90deg, #9f2132, var(--warn));
+    color: #ffe8ea;
   }
   .row {
     display: grid;
@@ -90,16 +151,17 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
     gap: 10px;
   }
   .tiny {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     color: var(--muted);
   }
   pre {
-    background: #12181b;
-    color: #d9edf1;
+    background: #060b16;
+    color: #d5ecff;
+    border: 1px solid rgba(84, 126, 173, 0.4);
     border-radius: 14px;
     padding: 12px;
     overflow: auto;
-    min-height: 180px;
+    min-height: 240px;
   }
   .status {
     margin-top: 12px;
@@ -118,10 +180,11 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
     margin-bottom: 4px;
   }
   .meter {
-    height: 10px;
+    height: 12px;
     border-radius: 999px;
-    background: #e6dcc9;
+    background: rgba(68, 89, 122, 0.52);
     overflow: hidden;
+    border: 1px solid rgba(122, 144, 178, 0.25);
   }
   .meter-fill {
     height: 100%;
@@ -138,33 +201,63 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
   .badge {
     padding: 4px 10px;
     border-radius: 999px;
-    background: #e9e2d2;
+    background: rgba(67, 86, 118, 0.58);
     color: var(--ink);
     font-size: 0.82rem;
     font-weight: 600;
+    border: 1px solid rgba(125, 151, 186, 0.26);
   }
   .badge.on {
-    background: var(--accent);
-    color: white;
+    background: rgba(0, 217, 255, 0.26);
+    color: #d9faff;
   }
   .badge.warn {
     background: var(--warn);
     color: white;
+  }
+  .stretch {
+    grid-column: span 2;
   }
   @media (max-width: 640px) {
     .row {
       grid-template-columns: 1fr;
     }
   }
+  @media (max-width: 980px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+    .grid {
+      grid-template-columns: 1fr;
+    }
+    .stretch {
+      grid-column: auto;
+    }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>TeleKart Control Plane</h1>
-  <p>This page is for setup, calibration, diagnostics, and emergency override. Primary driving is handled by the native controller app over CMU-DEVICE.</p>
+  <section class="hero">
+    <div class="hero-card">
+      <h1>TeleKart Race Control</h1>
+      <p>Live pit-lane console for telemetry, setup, and emergency override. Primary steering/throttle still comes from the native controller app.</p>
+      <div class="hero-badges">
+        <span class="hero-badge">100 Hz Command Link</span>
+        <span class="hero-badge">HMAC Pairing</span>
+        <span class="hero-badge">Telemetry Feedback</span>
+      </div>
+    </div>
+    <div class="hero-card">
+      <div class="hero-note">Quick Checklist</div>
+      <p class="tiny">1. Pair controller first.</p>
+      <p class="tiny">2. Confirm pedal monitor bars move as expected.</p>
+      <p class="tiny">3. Tune center/range and save calibration once.</p>
+    </div>
+  </section>
 
   <div class="grid">
-    <section class="card">
+    <section class="card stretch">
       <h2>Status</h2>
       <button class="alt" onclick="refreshAll()">Refresh Now</button>
       <pre id="statusView">Loading...</pre>
@@ -193,6 +286,7 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
         <span class="badge" id="reverseReqBadge">Reverse Requested: OFF</span>
         <span class="badge" id="reverseDriveBadge">Reverse Engaged: OFF</span>
         <span class="badge" id="estopReqBadge">E-Stop Request: OFF</span>
+        <span class="badge" id="noBrakeModeBadge">No-Brake Mode: ON</span>
       </div>
     </section>
 
@@ -236,6 +330,7 @@ static const char MAIN_PAGE[] PROGMEM = R"HTML(
         </div>
       </div>
       <div class="tiny">Range above 100% pushes each side to full lock sooner and can help compensate side-to-side mismatch.</div>
+      <label><input id="noBrakeMode" type="checkbox" checked style="width:auto;margin-right:8px;">Brake Pedal Reverses (No Brake Decel)</label>
 
       <button onclick="saveCalibration()">Save Calibration</button>
       <button class="alt" onclick="recenterCalibration()">Recenter (apply trim into center)</button>
@@ -289,6 +384,7 @@ const throttleOutBarEl = document.getElementById("throttleOutBar");
 const reverseReqBadgeEl = document.getElementById("reverseReqBadge");
 const reverseDriveBadgeEl = document.getElementById("reverseDriveBadge");
 const estopReqBadgeEl = document.getElementById("estopReqBadge");
+const noBrakeModeBadgeEl = document.getElementById("noBrakeModeBadge");
 
 const ssidEl = document.getElementById("ssid");
 const passwordEl = document.getElementById("password");
@@ -299,6 +395,7 @@ const steeringTrimEl = document.getElementById("steeringTrim");
 const steerCenterUsEl = document.getElementById("steerCenterUs");
 const steerLeftRangePctEl = document.getElementById("steerLeftRangePct");
 const steerRightRangePctEl = document.getElementById("steerRightRangePct");
+const noBrakeModeEl = document.getElementById("noBrakeMode");
 const debugThrottleEl = document.getElementById("debugThrottle");
 const debugSteerEl = document.getElementById("debugSteer");
 const debugThrottleValueEl = document.getElementById("debugThrottleValue");
@@ -385,6 +482,7 @@ function updateDriveMonitor(status) {
   setBadge(reverseReqBadgeEl, "Reverse Requested", !!status.reverse_requested, false);
   setBadge(reverseDriveBadgeEl, "Reverse Engaged", !!status.reverse_drive, false);
   setBadge(estopReqBadgeEl, "E-Stop Request", !!status.estop_requested, true);
+  setBadge(noBrakeModeBadgeEl, "No-Brake Mode", !!status.no_brake_mode, false);
 }
 
 function calibrationRangeValue(input, fallback) {
@@ -409,6 +507,7 @@ async function refreshAll() {
     syncTextInput(steerCenterUsEl, String(config.steer_center_us ?? 2000));
     syncTextInput(steerLeftRangePctEl, String(config.steer_left_range_pct ?? 100));
     syncTextInput(steerRightRangePctEl, String(config.steer_right_range_pct ?? 100));
+    syncCheckbox(noBrakeModeEl, config.no_brake_mode);
     statusMsgEl.textContent = "Status refreshed at " + new Date().toLocaleTimeString();
   } catch (error) {
     statusMsgEl.textContent = "Refresh failed: " + error.message;
@@ -445,6 +544,7 @@ async function saveCalibration() {
       steer_center_us: Number(steerCenterUsEl.value),
       steer_left_range_pct: leftRange,
       steer_right_range_pct: rightRange,
+      no_brake_mode: noBrakeModeEl.checked,
     });
     calMsgEl.textContent = "Calibration saved.";
     refreshAll();
@@ -475,6 +575,7 @@ async function recenterCalibration() {
       steer_center_us: nextCenter,
       steer_left_range_pct: leftRange,
       steer_right_range_pct: rightRange,
+      no_brake_mode: noBrakeModeEl.checked,
     });
     steeringTrimEl.value = "0";
     steerCenterUsEl.value = String(nextCenter);

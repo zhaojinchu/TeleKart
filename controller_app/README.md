@@ -45,6 +45,8 @@ python3 controller.py \
 
 ## Reverse With Pedals
 - By default, braking pedal input can assert reverse request automatically when throttle is near zero.
+- `pedal_source` supports `buttons` and `axes` (default `buttons` for B6/B7-style wheels).
+- For button pedals, set `throttle_button` and `brake_button` (for your wheel: B7 throttle, B6 brake).
 - Tune with config keys:
   - `auto_reverse_from_brake` (default `true`)
   - `reverse_from_brake_threshold` (default `0.12`)

@@ -86,6 +86,7 @@ extern int steeringTrim;   // -100..100
 extern int steerCenterUs;  // microseconds center
 extern int steerLeftRangePct;   // 0..180, scales center->left travel
 extern int steerRightRangePct;  // 0..180, scales center->right travel
+extern bool noBrakeMode;   // true: brake pedal requests reverse only
 extern int appliedSteerUs; // last steering pulse written
 
 // Loop timing

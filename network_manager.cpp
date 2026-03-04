@@ -49,6 +49,7 @@ void saveConfig() {
   prefs.putInt("center", steerCenterUs);
   prefs.putInt("range_l", steerLeftRangePct);
   prefs.putInt("range_r", steerRightRangePct);
+  prefs.putBool("nobrake", noBrakeMode);
 }
 
 void loadConfig() {
@@ -78,6 +79,8 @@ void loadConfig() {
   steerRightRangePct = prefs.getInt("range_r", DEFAULT_STEER_RIGHT_RANGE_PCT);
   if (steerRightRangePct < STEER_RANGE_PCT_MIN) steerRightRangePct = STEER_RANGE_PCT_MIN;
   if (steerRightRangePct > STEER_RANGE_PCT_MAX) steerRightRangePct = STEER_RANGE_PCT_MAX;
+
+  noBrakeMode = prefs.getBool("nobrake", noBrakeMode);
 }
 
 void stopMdns() {

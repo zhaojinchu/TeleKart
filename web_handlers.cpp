@@ -156,6 +156,7 @@ String buildStatusJson() {
       "\"reverse_drive\":" + String(vehicleState.reverseDrive ? "true" : "false") + ","
       "\"reverse_requested\":" + String(reverseRequested ? "true" : "false") + ","
       "\"estop_requested\":" + String(estopRequested ? "true" : "false") + ","
+      "\"no_brake_mode\":" + String(noBrakeMode ? "true" : "false") + ","
       "\"manual_override\":" + String(manualOverrideActive ? "true" : "false") + ","
       "\"input_steer_cmd_pct\":" + String(static_cast<float>(driveInput.steeringCmd) / 10.0f, 1) + ","
       "\"input_throttle_cmd_pct\":" + String(static_cast<float>(driveInput.throttleCmd) / 10.0f, 1) + ","
@@ -178,7 +179,8 @@ String buildConfigJson() {
       "\"steering_trim\":" + String(steeringTrim) + ","
       "\"steer_center_us\":" + String(steerCenterUs) + ","
       "\"steer_left_range_pct\":" + String(steerLeftRangePct) + ","
-      "\"steer_right_range_pct\":" + String(steerRightRangePct) +
+      "\"steer_right_range_pct\":" + String(steerRightRangePct) + ","
+      "\"no_brake_mode\":" + String(noBrakeMode ? "true" : "false") +
       "}";
 }
 
@@ -234,6 +236,7 @@ void handlePostConfig() {
   String body = requestBody();
   int value = 0;
   bool clearEstop = false;
+  bool boolValue = false;
 
   if (jsonGetInt(body, "steering_trim", value)) {
     steeringTrim = clampInt(value, -100, 100);
@@ -249,6 +252,10 @@ void handlePostConfig() {
 
   if (jsonGetInt(body, "steer_right_range_pct", value)) {
     steerRightRangePct = clampInt(value, STEER_RANGE_PCT_MIN, STEER_RANGE_PCT_MAX);
+  }
+
+  if (jsonGetBool(body, "no_brake_mode", boolValue)) {
+    noBrakeMode = boolValue;
   }
 
   if (jsonGetBool(body, "clear_estop", clearEstop) && clearEstop) {

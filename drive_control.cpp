@@ -158,7 +158,7 @@ void drive_control_poll(uint32_t now) {
 
   float accelTerm = rawThrottle * ACCEL_PER_SECOND * dt;
   float dragTerm = DRAG_PER_SECOND * dt;
-  float brakeTerm = rawBrake * BRAKE_DECEL_PER_SECOND * dt;
+  float brakeTerm = noBrakeMode ? 0.0f : (rawBrake * BRAKE_DECEL_PER_SECOND * dt);
   vehicleState.virtualSpeedPct += accelTerm;
   vehicleState.virtualSpeedPct -= dragTerm;
   vehicleState.virtualSpeedPct -= brakeTerm;
@@ -174,9 +174,14 @@ void drive_control_poll(uint32_t now) {
         desiredThrottlePct = clampInt(static_cast<int>(lroundf(vehicleState.filteredThrottlePct * 100.0f)), 0, 100);
       } else if (rawBrake > THROTTLE_DEADBAND) {
         if (vehicleState.virtualSpeedPct > REVERSE_ALLOWED_SPEED_PCT) {
-          vehicleState.braking = true;
-          float brakePct = clampFloat(rawBrake * BRAKE_STRENGTH, 0.0f, 0.35f);
-          desiredThrottlePct = -clampInt(static_cast<int>(lroundf(brakePct * 100.0f)), 0, 35);
+          if (!noBrakeMode) {
+            vehicleState.braking = true;
+            float brakePct = clampFloat(rawBrake * BRAKE_STRENGTH, 0.0f, 0.35f);
+            desiredThrottlePct = -clampInt(static_cast<int>(lroundf(brakePct * 100.0f)), 0, 35);
+          } else {
+            desiredThrottlePct = 0;
+            vehicleState.reverseArmed = false;
+          }
         } else {
           desiredThrottlePct = 0;
           if (reverseRequested) {
