@@ -55,6 +55,9 @@ class ControllerConfig:
     reverse_from_throttle_max: float = 0.05
     reverse_button: int = -1
     estop_button: int = -1
+    keyboard_throttle: float = 1.0
+    keyboard_brake: float = 1.0
+    keyboard_steer: float = 1.0
 
 
 class VideoWorker(threading.Thread):
@@ -282,6 +285,10 @@ def main() -> int:
     pygame.joystick.init()
     clock = pygame.time.Clock()
 
+    screen = pygame.display.set_mode((560, 260))
+    pygame.display.set_caption("TeleKart Controller")
+    hud_font = pygame.font.SysFont("monospace", 18)
+
     joystick = None
     if pygame.joystick.get_count() > 0:
         joystick = pygame.joystick.Joystick(0)
@@ -386,14 +393,14 @@ def main() -> int:
                     flags |= FLAG_ESTOP
 
             if key_state["a"] and not key_state["d"]:
-                raw_steer = -1.0
+                raw_steer = -config.keyboard_steer
             elif key_state["d"] and not key_state["a"]:
-                raw_steer = 1.0
+                raw_steer = config.keyboard_steer
 
             if key_state["w"]:
-                throttle = 1.0
+                throttle = config.keyboard_throttle
             if key_state["s"]:
-                brake = 1.0
+                brake = config.keyboard_brake
             if key_state["r"]:
                 flags |= FLAG_REVERSE
             if key_state["space"]:
@@ -451,6 +458,24 @@ def main() -> int:
                         last_print = now
             except BlockingIOError:
                 pass
+
+            # Render HUD
+            screen.fill((15, 18, 28))
+            hud_lines = [
+                f"Steer: {filtered_steer:+.2f}   Throttle: {throttle:.2f}   Brake: {brake:.2f}",
+                f"Flags: {'ESTOP ' if flags & FLAG_ESTOP else ''}{'REVERSE ' if flags & FLAG_REVERSE else ''}{'(none)' if not flags else ''}",
+                f"Keys: [{'W' if key_state['w'] else ' '}] [{'A' if key_state['a'] else ' '}] [{'S' if key_state['s'] else ' '}] [{'D' if key_state['d'] else ' '}]  [{'R' if key_state['r'] else ' '}]ev  [{'*' if key_state['space'] else ' '}]stop",
+                f"Seq: {sequence}   Session: {session_id}",
+                f"Input: {joystick.get_name() if joystick else 'Keyboard only'}",
+                "",
+                "W/S=throttle/brake  A/D=steer  R=reverse  Space=estop  Esc=quit",
+            ]
+            hud_y = 16
+            for hud_line in hud_lines:
+                surf = hud_font.render(hud_line, True, (180, 200, 240))
+                screen.blit(surf, (16, hud_y))
+                hud_y += 32
+            pygame.display.flip()
 
             clock.tick(200)
     finally:

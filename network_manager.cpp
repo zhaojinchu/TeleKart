@@ -169,6 +169,10 @@ void network_manager_poll(uint32_t now) {
   diagnosticsState.wifiRssi = connected ? WiFi.RSSI() : 0;
 
   if (connected) {
+    if (connectInProgress) {
+      Serial.print("Wi-Fi connected! IP: ");
+      Serial.println(WiFi.localIP());
+    }
     diagnosticsState.fallbackApActive = false;
     connectInProgress = false;
     startMdnsIfPossible();
