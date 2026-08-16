@@ -313,7 +313,11 @@ class NavigationRail(PaintedWidget):
             self._focus_index = index
             self.update()
             return
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+        # Return/Enter only. Space is deliberately absent: it is the E-stop
+        # key, and a focused navigation rail quietly eating it would make the
+        # single most important control in the application depend on which
+        # widget the driver last clicked.
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if 0 <= self._focus_index < len(self._items):
                 self.set_current(self._items[self._focus_index].key)
             return

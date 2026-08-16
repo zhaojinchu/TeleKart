@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QHideEvent, QShowEvent
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
@@ -62,6 +62,9 @@ class DriveScreen(QWidget):
         theme: Theme = THEME,
     ) -> None:
         super().__init__(parent)
+        # Must be focusable or show_screen's setFocus is a no-op and the arrow
+        # keys keep going to whatever was clicked last.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._model = model
         self._theme = theme
         self._armed = False

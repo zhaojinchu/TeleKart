@@ -318,6 +318,12 @@ class MainWindow(QMainWindow):
         self.rail.set_current(key)
         self._act_diag.setEnabled(key == "drive")
         self._act_hud.setEnabled(key == "drive")
+        # Move focus onto the screen itself. Otherwise focus stays wherever the
+        # driver last clicked -- typically the navigation rail, which handles the
+        # arrow keys as list navigation and would silently absorb steering and
+        # throttle. Keyboard driving worked or not depending on the last click,
+        # which is indistinguishable from the keys doing nothing.
+        widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     @property
     def current_screen(self) -> str:
@@ -335,6 +341,20 @@ class MainWindow(QMainWindow):
             self.showFullScreen()
         self._act_full.setChecked(self.isFullScreen())
 
+    #: WASD aliased onto the arrow keys the keyboard profile actually binds.
+    #: Arrows are the canonical binding, but three decades of driving games have
+    #: trained WASD into people's hands, and a driver who tries it, gets nothing,
+    #: and concludes the app is broken is not wrong to.
+    _KEY_ALIASES = {
+        Qt.Key.Key_W: Qt.Key.Key_Up,
+        Qt.Key.Key_S: Qt.Key.Key_Down,
+        Qt.Key.Key_A: Qt.Key.Key_Left,
+        Qt.Key.Key_D: Qt.Key.Key_Right,
+    }
+
+    def _driving_key(self, event: QKeyEvent) -> int:
+        return int(self._KEY_ALIASES.get(Qt.Key(event.key()), Qt.Key(event.key())))
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_Escape:
             # Leaves fullscreen and stops there. It is NOT wired to disarm and
@@ -345,7 +365,19 @@ class MainWindow(QMainWindow):
                 self._act_full.setChecked(False)
             event.accept()
             return
+        # Auto-repeat is filtered on both edges. Qt synthesises a full
+        # release/press pair for every repeat of a held key, so forwarding them
+        # would make a held throttle look like frantic tapping to the input
+        # chain -- which is exactly what a rate limiter turns into no throttle
+        # at all.
+        if not event.isAutoRepeat():
+            self._model.key_pressed(self._driving_key(event))
         super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if not event.isAutoRepeat():
+            self._model.key_released(self._driving_key(event))
+        super().keyReleaseEvent(event)
 
     def _on_armed(self, armed: bool) -> None:
         """The car says it is armed. Show the driver the car.
