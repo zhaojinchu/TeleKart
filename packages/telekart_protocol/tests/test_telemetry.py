@@ -20,7 +20,6 @@ import pytest
 from telekart_protocol.constants import (
     CRITICAL_FAULTS,
     DUTY_SCALE,
-    MAC_TAG_LEN,
     MAGIC_TELEMETRY,
     PROTO_VERSION,
     Fault,
@@ -28,14 +27,13 @@ from telekart_protocol.constants import (
     VehicleState,
 )
 from telekart_protocol.control import ProtocolError
-from telekart_protocol.crypto import compute_tag
 from telekart_protocol.telemetry import (
     SLIP_SCALE,
     TELEMETRY_PACKET_LEN,
     TelemetryPacket,
 )
 
-from . import GOLDEN_UDP_KEY, OTHER_UDP_KEY, flip_bit, splice
+from . import flip_bit, splice
 
 # Byte offsets derived from the struct format in telemetry.py. Spelled out so a
 # layout change fails here with a readable name rather than as a mystery.
@@ -51,8 +49,6 @@ OFF_FAULTS = 36
 OFF_STATE = 40
 OFF_RESERVED0 = 41
 OFF_RPM_L = 42
-
-SIGNED_LEN = TELEMETRY_PACKET_LEN - MAC_TAG_LEN
 
 GOLDEN_FLAGS = (
     TelemetryFlags.CALIBRATED
@@ -94,7 +90,7 @@ GOLDEN_TELEMETRY = TelemetryPacket(
 
 GOLDEN_TELEMETRY_HEX = (
     "54544b31"  # magic 'TTK1'
-    "0200"  # version 2
+    "0300"  # version 3
     "8c01"  # flags CALIBRATED|CLOSED_LOOP|ODOM_VALID|VIDEO_ACTIVE
     "44332211"  # session_id
     "d2040000"  # sequence 1234
@@ -124,14 +120,8 @@ GOLDEN_TELEMETRY_HEX = (
     "05000500"  # throttled 0x00050005
     "0a28"  # loop_p99_us 10250
     "0000"  # reserved
-    "d088039108e4fbe4"  # truncated HMAC-SHA256 over bytes [0, 90)
 )
 GOLDEN_TELEMETRY_BYTES = bytes.fromhex(GOLDEN_TELEMETRY_HEX)
-
-
-def _retag(data: bytes, key: bytes = GOLDEN_UDP_KEY) -> bytes:
-    body = data[:SIGNED_LEN]
-    return body + compute_tag(key, body)
 
 
 def _wrap_rad(angle: float) -> float:
@@ -146,9 +136,8 @@ def _angular_error(a: float, b: float) -> float:
 
 
 def test_struct_size_is_pinned() -> None:
-    assert TELEMETRY_PACKET_LEN == 98
-    assert struct.calcsize("<IHHIIQQIIBBhhhhhhHhhHiihIHHhIHH8s") == 98
-    assert SIGNED_LEN == 90
+    assert TELEMETRY_PACKET_LEN == 90
+    assert struct.calcsize("<IHHIIQQIIBBhhhhhhHhhHiihIHHhIHH") == 90
 
 
 def test_magic_is_the_documented_ascii() -> None:
@@ -180,11 +169,11 @@ def test_critical_faults_are_a_subset_of_fault() -> None:
 
 
 def test_golden_pack() -> None:
-    assert GOLDEN_TELEMETRY.pack(GOLDEN_UDP_KEY).hex() == GOLDEN_TELEMETRY_BYTES.hex()
+    assert GOLDEN_TELEMETRY.pack().hex() == GOLDEN_TELEMETRY_BYTES.hex()
 
 
 def test_golden_unpack() -> None:
-    pkt = TelemetryPacket.unpack(GOLDEN_TELEMETRY_BYTES, GOLDEN_UDP_KEY)
+    pkt = TelemetryPacket.unpack(GOLDEN_TELEMETRY_BYTES)
     assert pkt == GOLDEN_TELEMETRY
     assert pkt.state is VehicleState.ARMED
     assert pkt.faults == GOLDEN_FAULTS
@@ -193,7 +182,7 @@ def test_golden_unpack() -> None:
 
 
 def test_golden_si_views() -> None:
-    pkt = TelemetryPacket.unpack(GOLDEN_TELEMETRY_BYTES, GOLDEN_UDP_KEY)
+    pkt = TelemetryPacket.unpack(GOLDEN_TELEMETRY_BYTES)
     assert pkt.duty_l_f == pytest.approx(0.5)
     assert pkt.duty_r_f == pytest.approx(-0.25)
     assert pkt.speed_mps == pytest.approx(0.85)
@@ -258,19 +247,19 @@ def test_packet_is_immutable() -> None:
 
 def test_default_packet_round_trips() -> None:
     pkt = TelemetryPacket(session_id=0, sequence=0, car_time_us=0)
-    assert TelemetryPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY) == pkt
+    assert TelemetryPacket.unpack(pkt.pack()) == pkt
 
 
 @pytest.mark.parametrize("state", list(VehicleState))
 def test_every_state_round_trips(state: VehicleState) -> None:
     pkt = TelemetryPacket(session_id=1, sequence=1, car_time_us=1, state=state)
-    assert TelemetryPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY).state is state
+    assert TelemetryPacket.unpack(pkt.pack()).state is state
 
 
 @pytest.mark.parametrize("fault", list(Fault))
 def test_every_fault_round_trips(fault: Fault) -> None:
     pkt = TelemetryPacket(session_id=1, sequence=1, car_time_us=1, faults=fault)
-    assert TelemetryPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY).faults == fault
+    assert TelemetryPacket.unpack(pkt.pack()).faults == fault
 
 
 def test_all_faults_at_once_round_trip() -> None:
@@ -278,7 +267,7 @@ def test_all_faults_at_once_round_trip() -> None:
     for fault in Fault:
         every |= fault
     pkt = TelemetryPacket(session_id=1, sequence=1, car_time_us=1, faults=every)
-    assert TelemetryPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY).faults == every
+    assert TelemetryPacket.unpack(pkt.pack()).faults == every
 
 
 def test_all_flags_at_once_round_trip() -> None:
@@ -286,7 +275,7 @@ def test_all_flags_at_once_round_trip() -> None:
     for flag in TelemetryFlags:
         every |= flag
     pkt = TelemetryPacket(session_id=1, sequence=1, car_time_us=1, flags=every)
-    assert TelemetryPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY).flags == every
+    assert TelemetryPacket.unpack(pkt.pack()).flags == every
 
 
 def test_randomized_round_trip() -> None:
@@ -321,7 +310,7 @@ def test_randomized_round_trip() -> None:
             throttled=rng.getrandbits(32),
             loop_p99_us=rng.randint(0, 65535),
         )
-        assert TelemetryPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY) == pkt
+        assert TelemetryPacket.unpack(pkt.pack()) == pkt
 
 
 # ----------------------------------------------------- saturation / NaN
@@ -427,7 +416,7 @@ def test_nonfinite_becomes_zero_not_saturation(bad: float) -> None:
     assert pkt == TelemetryPacket(
         session_id=1, sequence=1, car_time_us=1, state=VehicleState.ARMED
     )
-    assert len(pkt.pack(GOLDEN_UDP_KEY)) == TELEMETRY_PACKET_LEN
+    assert len(pkt.pack()) == TELEMETRY_PACKET_LEN
 
 
 def test_counters_are_masked_not_overflowed() -> None:
@@ -521,46 +510,35 @@ def test_heading_accumulates_without_drift_across_many_wraps() -> None:
 # ----------------------------------------------------------- rejection
 
 
-def test_wrong_key_is_rejected() -> None:
-    with pytest.raises(ProtocolError, match="authentication"):
-        TelemetryPacket.unpack(GOLDEN_TELEMETRY_BYTES, OTHER_UDP_KEY)
-
-
-@pytest.mark.parametrize("index", range(TELEMETRY_PACKET_LEN))
-def test_single_bit_tamper_anywhere_is_rejected(index: int) -> None:
-    with pytest.raises(ProtocolError):
-        TelemetryPacket.unpack(flip_bit(GOLDEN_TELEMETRY_BYTES, index), GOLDEN_UDP_KEY)
-
-
 def test_bad_magic_is_rejected() -> None:
     from telekart_protocol.constants import MAGIC_CONTROL
 
-    bad = _retag(splice(GOLDEN_TELEMETRY_BYTES, OFF_MAGIC, MAGIC_CONTROL.to_bytes(4, "little")))
+    bad = splice(GOLDEN_TELEMETRY_BYTES, OFF_MAGIC, MAGIC_CONTROL.to_bytes(4, "little"))
     with pytest.raises(ProtocolError, match="magic"):
-        TelemetryPacket.unpack(bad, GOLDEN_UDP_KEY)
+        TelemetryPacket.unpack(bad)
 
 
-@pytest.mark.parametrize("version", [0, 1, 3, 65535])
+@pytest.mark.parametrize("version", [0, 1, 2, 4, 65535])
 def test_version_mismatch_is_rejected(version: int) -> None:
-    bad = _retag(splice(GOLDEN_TELEMETRY_BYTES, OFF_VERSION, version.to_bytes(2, "little")))
+    bad = splice(GOLDEN_TELEMETRY_BYTES, OFF_VERSION, version.to_bytes(2, "little"))
     with pytest.raises(ProtocolError, match="version"):
-        TelemetryPacket.unpack(bad, GOLDEN_UDP_KEY)
+        TelemetryPacket.unpack(bad)
 
 
 @pytest.mark.parametrize("length", [0, 1, 40, 97, 99, 256])
 def test_wrong_length_is_rejected(length: int) -> None:
     data = (GOLDEN_TELEMETRY_BYTES + bytes(256))[:length]
     with pytest.raises(ProtocolError, match="bytes"):
-        TelemetryPacket.unpack(data, GOLDEN_UDP_KEY)
+        TelemetryPacket.unpack(data)
 
 
 def test_garbage_only_ever_raises_protocol_error() -> None:
     rng = random.Random(4242)
     for _ in range(2000):
-        size = rng.choice([0, 1, 50, 97, 98, 99, 300])
+        size = rng.choice([0, 1, 50, 89, 90, 91, 300])
         data = bytes(rng.getrandbits(8) for _ in range(size))
         try:
-            TelemetryPacket.unpack(data, GOLDEN_UDP_KEY)
+            TelemetryPacket.unpack(data)
         except ProtocolError:
             pass
 
@@ -571,26 +549,26 @@ def test_garbage_only_ever_raises_protocol_error() -> None:
 def test_unknown_state_degrades_to_fault() -> None:
     # A firmware from the future may report a state this app has never heard of.
     # Showing FAULT is honest; raising would blank the whole HUD.
-    bad = _retag(splice(GOLDEN_TELEMETRY_BYTES, OFF_STATE, b"\x63"))
-    pkt = TelemetryPacket.unpack(bad, GOLDEN_UDP_KEY)
+    bad = splice(GOLDEN_TELEMETRY_BYTES, OFF_STATE, b"\x63")
+    pkt = TelemetryPacket.unpack(bad)
     assert pkt.state is VehicleState.FAULT
 
 
 def test_unknown_fault_bit_is_preserved() -> None:
-    bad = _retag(splice(GOLDEN_TELEMETRY_BYTES, OFF_FAULTS, struct.pack("<I", 1 << 31)))
-    pkt = TelemetryPacket.unpack(bad, GOLDEN_UDP_KEY)
+    bad = splice(GOLDEN_TELEMETRY_BYTES, OFF_FAULTS, struct.pack("<I", 1 << 31))
+    pkt = TelemetryPacket.unpack(bad)
     assert int(pkt.faults) & (1 << 31)
 
 
 def test_unknown_telemetry_flag_is_preserved() -> None:
-    bad = _retag(splice(GOLDEN_TELEMETRY_BYTES, OFF_FLAGS, struct.pack("<H", 1 << 15)))
-    pkt = TelemetryPacket.unpack(bad, GOLDEN_UDP_KEY)
+    bad = splice(GOLDEN_TELEMETRY_BYTES, OFF_FLAGS, struct.pack("<H", 1 << 15))
+    pkt = TelemetryPacket.unpack(bad)
     assert int(pkt.flags) & (1 << 15)
 
 
 def test_nonzero_reserved_is_accepted() -> None:
-    bad = _retag(splice(GOLDEN_TELEMETRY_BYTES, OFF_RESERVED0, b"\x7f"))
-    assert TelemetryPacket.unpack(bad, GOLDEN_UDP_KEY).rpm_l == 123
+    bad = splice(GOLDEN_TELEMETRY_BYTES, OFF_RESERVED0, b"\x7f")
+    assert TelemetryPacket.unpack(bad).rpm_l == 123
 
 
 # ---------------------------------------------------- state predicates

@@ -21,17 +21,17 @@ easy to miss:
   laptop is driving?" is not a question anyone should have to answer while the
   car is moving.
 
-The handshake follows docs/protocol.md §5.5, which resolves an ambiguity the
-frozen protocol package leaves open: ``session.hello()`` refers to a nonce that
-has no constructor in the package. The car sends it unsolicited on accept as
-``ack(0, nonce=<32 hex chars>)``.
+The handshake is one round trip: the app connects and sends ``hello``, the car
+replies ``hello_ack``, and the session is open. Earlier revisions put a
+nonce/HMAC challenge in front of that, which is why ``docs/protocol.md`` §5.5
+used to describe an unsolicited ``ack(0, nonce=...)`` from the car. There is no
+nonce and no shared key any more -- anyone who can reach port 4212 can open a
+session and drive.
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import math
 import os
 import socket
@@ -46,9 +46,6 @@ from telekart_protocol import (
     MsgType,
     PROTO_VERSION,
     SessionError,
-    derive_udp_key,
-    make_session_token,
-    normalize_shared_key,
 )
 from telekart_protocol.constants import (
     SESSION_TTL_S,
@@ -65,11 +62,6 @@ from ..log import get_logger
 from ..util.clock import Clock
 
 _log = get_logger(__name__)
-
-#: 16 bytes of challenge, hex-encoded on the wire. Big enough that a replayed
-#: `auth` from a captured handshake is useless; the point is freshness, not
-#: cryptographic drama.
-NONCE_LEN = 16
 
 #: An operator who connects and then says nothing holds the slot for this long.
 #: Bounded on purpose: the reservation happens at accept time so two laptops
@@ -204,8 +196,6 @@ class SessionInfo:
     links at the operator and tear them down again when the link drops."""
 
     session_id: int
-    token: bytes
-    udp_key: bytes
     peer_host: str
     telemetry_addr: tuple[str, int]
     driver: str
@@ -301,7 +291,7 @@ class _Connection:
 
 
 class SessionServer:
-    """Accepts one operator, authenticates it, and serves the control plane."""
+    """Accepts one operator and serves the control plane."""
 
     def __init__(
         self,
@@ -336,7 +326,6 @@ class SessionServer:
 
         # Derived once: hashing a passphrase per connection would be pointless,
         # and keeping the raw string around longer than necessary is worse.
-        self._shared_key = normalize_shared_key(config.shared_key)
 
         self._server: asyncio.AbstractServer | None = None
         self._connections: set[_Connection] = set()
@@ -437,14 +426,9 @@ class SessionServer:
             self._operator = conn
             reserved = True
 
-            nonce = os.urandom(NONCE_LEN)
-            if not await conn.send(ack(0, nonce=nonce.hex())):
-                reason = "nonce send failed"
-                return
-
             try:
                 info = await asyncio.wait_for(
-                    self._handshake(conn, nonce), HANDSHAKE_TIMEOUT_S
+                    self._handshake(conn), HANDSHAKE_TIMEOUT_S
                 )
             except asyncio.TimeoutError:
                 self.sessions_rejected += 1
@@ -493,7 +477,7 @@ class SessionServer:
             except (OSError, ConnectionError, asyncio.CancelledError):
                 pass
 
-    async def _handshake(self, conn: _Connection, nonce: bytes) -> SessionInfo:
+    async def _handshake(self, conn: _Connection) -> SessionInfo:
         try:
             msg = await conn.read_message()
         except SessionError as exc:
@@ -521,7 +505,6 @@ class SessionServer:
             raise _HandshakeRejected(f"protocol mismatch: {proto!r}")
 
         try:
-            auth = msg.require("auth", str)
             app_version = msg.require("app_version", str)
             driver = msg.require("driver", str)
             telemetry_port = _require_port(msg, "telemetry_port")
@@ -529,19 +512,9 @@ class SessionServer:
             await conn.send(error(msg.id, ErrorCode.BAD_REQUEST, str(exc)))
             raise _HandshakeRejected(str(exc)) from exc
 
-        expected = hmac.new(self._shared_key, nonce, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(expected, auth.strip().lower()):
-            await conn.send(
-                error(msg.id, ErrorCode.AUTH_FAILED, "shared key does not match")
-            )
-            raise _HandshakeRejected("authentication failed")
-
-        token = make_session_token()
         session_id = _new_session_id()
         info = SessionInfo(
             session_id=session_id,
-            token=token,
-            udp_key=derive_udp_key(self._shared_key, token),
             peer_host=conn.peer_host,
             telemetry_addr=(conn.peer_host, telemetry_port),
             driver=driver[:64],
@@ -555,7 +528,6 @@ class SessionServer:
                 car_id=self._config.car_id,
                 fw_version=self._fw_version,
                 session_id=session_id,
-                session_token=token.hex(),
                 caps=self._caps,
                 video_port=self._video_port,
                 control_port=self._control_port,
@@ -940,6 +912,5 @@ __all__ = [
     "NotAllowedInState",
     "CalibrationBusy",
     "CalibrationUnavailable",
-    "NONCE_LEN",
     "DEFAULT_CAPS",
 ]

@@ -1,9 +1,11 @@
 """TelemetryPacket -- car to app, 50 Hz over UDP.
 
-Fixed 98 bytes. Everything the HUD, the safety display, and the deferred
-racing-sim layer need, in one datagram, so the app always renders a
-self-consistent snapshot rather than stitching together fields that arrived at
-different times.
+Fixed 90 bytes. Everything the HUD and the safety display need, in one
+datagram, so the app always renders a self-consistent snapshot rather than
+stitching together fields that arrived at different times.
+
+Carries no authentication tag; see ``control.py`` for what that used to defend
+against and what remains without it.
 
 Two design notes worth keeping:
 
@@ -24,7 +26,6 @@ from dataclasses import dataclass
 
 from .constants import (
     DUTY_SCALE,
-    MAC_TAG_LEN,
     MAGIC_TELEMETRY,
     PROTO_VERSION,
     Fault,
@@ -32,13 +33,10 @@ from .constants import (
     VehicleState,
 )
 from .control import ProtocolError
-from .crypto import compute_tag, verify_tag
 
-_STRUCT = struct.Struct("<IHHIIQQIIBBhhhhhhHhhHiihIHHhIHH8s")
+_STRUCT = struct.Struct("<IHHIIQQIIBBhhhhhhHhhHiihIHHhIHH")
 TELEMETRY_PACKET_LEN = _STRUCT.size
-assert TELEMETRY_PACKET_LEN == 98, f"telemetry layout drifted: {TELEMETRY_PACKET_LEN}"
-
-_SIGNED_LEN = TELEMETRY_PACKET_LEN - MAC_TAG_LEN
+assert TELEMETRY_PACKET_LEN == 90, f"telemetry layout drifted: {TELEMETRY_PACKET_LEN}"
 
 SLIP_SCALE = 1000.0
 
@@ -246,8 +244,8 @@ class TelemetryPacket:
 
     # -- wire format --------------------------------------------------------
 
-    def pack(self, key: bytes) -> bytes:
-        body = _STRUCT.pack(
+    def pack(self) -> bytes:
+        return _STRUCT.pack(
             MAGIC_TELEMETRY,
             self.version,
             int(self.flags) & 0xFFFF,
@@ -279,12 +277,10 @@ class TelemetryPacket:
             self.throttled,
             self.loop_p99_us,
             0,
-            b"\x00" * MAC_TAG_LEN,
-        )[:_SIGNED_LEN]
-        return body + compute_tag(key, body)
+        )
 
     @classmethod
-    def unpack(cls, data: bytes, key: bytes) -> "TelemetryPacket":
+    def unpack(cls, data: bytes) -> "TelemetryPacket":
         if len(data) != TELEMETRY_PACKET_LEN:
             raise ProtocolError(
                 f"telemetry packet is {len(data)} bytes, expected {TELEMETRY_PACKET_LEN}"
@@ -299,9 +295,6 @@ class TelemetryPacket:
             raise ProtocolError(
                 f"protocol version {version}, this build speaks {PROTO_VERSION}"
             )
-        if not verify_tag(key, data[:_SIGNED_LEN], fields[-1]):
-            raise ProtocolError("telemetry packet failed authentication")
-
         (
             car_time_us,
             echo_client_time_us,

@@ -24,7 +24,6 @@ from .constants import (
     FAILSAFE_BRAKE_AT_MS,
     FAILSAFE_COAST_AT_MS,
     FAILSAFE_DISARM_AT_MS,
-    MAC_TAG_LEN,
     MAGIC_CONTROL,
     MAGIC_TELEMETRY,
     MAGIC_VIDEO,
@@ -44,13 +43,6 @@ from .constants import (
     VideoFrameFlags,
 )
 from .control import CONTROL_PACKET_LEN, ControlPacket, ProtocolError, peek_session_id
-from .crypto import (
-    compute_tag,
-    derive_udp_key,
-    make_session_token,
-    normalize_shared_key,
-    verify_tag,
-)
 from .params import PARAMS, ParamDef, ParamError, coerce, coerce_all, defaults
 from .session import ErrorCode, LineReader, Message, MsgType, SessionError
 from .telemetry import TELEMETRY_PACKET_LEN, TelemetryPacket
@@ -84,7 +76,6 @@ __all__ = [
     "FAILSAFE_COAST_AT_MS",
     "FAILSAFE_DISARM_AT_MS",
     "SESSION_TTL_S",
-    "MAC_TAG_LEN",
     "CRITICAL_FAULTS",
     # enums
     "VehicleState",
@@ -100,12 +91,6 @@ __all__ = [
     "TELEMETRY_PACKET_LEN",
     "ProtocolError",
     "peek_session_id",
-    # crypto
-    "compute_tag",
-    "verify_tag",
-    "derive_udp_key",
-    "make_session_token",
-    "normalize_shared_key",
     # session
     "Message",
     "MsgType",

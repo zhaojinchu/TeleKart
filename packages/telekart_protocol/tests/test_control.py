@@ -22,7 +22,6 @@ from telekart_protocol.constants import (
     FAILSAFE_BRAKE_AT_MS,
     FAILSAFE_COAST_AT_MS,
     FAILSAFE_DISARM_AT_MS,
-    MAC_TAG_LEN,
     MAGIC_CONTROL,
     PROTO_VERSION,
     SEQUENCE_REPLAY_WINDOW,
@@ -36,23 +35,7 @@ from telekart_protocol.control import (
     ProtocolError,
     peek_session_id,
 )
-from telekart_protocol.crypto import (
-    compute_tag,
-    derive_udp_key,
-    make_session_token,
-    normalize_shared_key,
-    verify_tag,
-)
-
-from . import (
-    GOLDEN_PASSPHRASE,
-    GOLDEN_SESSION_TOKEN,
-    GOLDEN_SHARED_KEY,
-    GOLDEN_UDP_KEY,
-    OTHER_UDP_KEY,
-    flip_bit,
-    splice,
-)
+from . import flip_bit, splice
 
 # Byte offsets into the wire layout, from the module docstring of control.py.
 OFF_MAGIC = 0
@@ -65,9 +48,6 @@ OFF_THROTTLE = 24
 OFF_BRAKE = 26
 OFF_FLAGS = 28
 OFF_RESERVED = 30
-OFF_TAG = 32
-
-SIGNED_LEN = CONTROL_PACKET_LEN - MAC_TAG_LEN
 
 GOLDEN_CONTROL = ControlPacket(
     session_id=0x11223344,
@@ -81,7 +61,7 @@ GOLDEN_CONTROL = ControlPacket(
 
 GOLDEN_CONTROL_HEX = (
     "43544b31"  # magic 'CTK1'
-    "0200"  # version 2
+    "0300"  # version 3
     "44332211"  # session_id 0x11223344
     "2a000000"  # sequence 42
     "8967452301000000"  # client_time_us 0x0000000123456789
@@ -90,28 +70,16 @@ GOLDEN_CONTROL_HEX = (
     "0000"  # brake 0
     "3000"  # flags ARM_INTENT | HEADLIGHTS
     "0000"  # reserved
-    "fc3361ca92c91da4"  # truncated HMAC-SHA256 over bytes [0, 32)
 )
 GOLDEN_CONTROL_BYTES = bytes.fromhex(GOLDEN_CONTROL_HEX)
-
-
-def _retag(data: bytes, key: bytes = GOLDEN_UDP_KEY) -> bytes:
-    """Re-sign a hand-edited packet so a decode test reaches the field checks.
-
-    Without this, every "what happens when field X is bogus" test would trip the
-    MAC first and prove only that the MAC works.
-    """
-    body = data[:SIGNED_LEN]
-    return body + compute_tag(key, body)
 
 
 # ---------------------------------------------------------------- layout
 
 
 def test_struct_size_is_pinned() -> None:
-    assert CONTROL_PACKET_LEN == 40
-    assert struct.calcsize("<IHIIQhhhHH8s") == 40
-    assert SIGNED_LEN == 32
+    assert CONTROL_PACKET_LEN == 32
+    assert struct.calcsize("<IHIIQhhhHH") == 32
 
 
 def test_magic_is_the_documented_ascii() -> None:
@@ -121,8 +89,7 @@ def test_magic_is_the_documented_ascii() -> None:
 
 
 def test_protocol_constants_are_pinned() -> None:
-    assert PROTO_VERSION == 2
-    assert MAC_TAG_LEN == 8
+    assert PROTO_VERSION == 3
     assert STEERING_SCALE == THROTTLE_SCALE == BRAKE_SCALE == 1000
     assert SEQUENCE_REPLAY_WINDOW == 0  # strictly increasing; no window
 
@@ -137,55 +104,15 @@ def test_failsafe_schedule_is_ordered() -> None:
 # ------------------------------------------------------------ golden key
 
 
-def test_shared_key_derivation_matches_golden() -> None:
-    assert normalize_shared_key(GOLDEN_PASSPHRASE) == GOLDEN_SHARED_KEY
-    assert normalize_shared_key(GOLDEN_PASSPHRASE.encode()) == GOLDEN_SHARED_KEY
-
-
-def test_udp_key_derivation_matches_golden() -> None:
-    # Pinned separately from the packet vectors: if the KDF changed, every
-    # golden packet below would regenerate consistently and hide the break.
-    assert derive_udp_key(GOLDEN_SHARED_KEY, GOLDEN_SESSION_TOKEN) == GOLDEN_UDP_KEY
-
-
-def test_kdf_rejects_degenerate_inputs() -> None:
-    with pytest.raises(ValueError):
-        derive_udp_key(b"", GOLDEN_SESSION_TOKEN)
-    with pytest.raises(ValueError):
-        derive_udp_key(GOLDEN_SHARED_KEY, b"short")
-    with pytest.raises(ValueError):
-        normalize_shared_key("")
-
-
-def test_kdf_is_session_separated() -> None:
-    a = derive_udp_key(GOLDEN_SHARED_KEY, bytes(16))
-    b = derive_udp_key(GOLDEN_SHARED_KEY, bytes([1]) + bytes(15))
-    assert a != b
-
-
-def test_session_tokens_are_fresh() -> None:
-    assert len({make_session_token() for _ in range(32)}) == 32
-    assert len(make_session_token()) == 16
-
-
-def test_tag_is_truncated_and_constant_time_checked() -> None:
-    tag = compute_tag(GOLDEN_UDP_KEY, b"abc")
-    assert len(tag) == MAC_TAG_LEN
-    assert tag.hex() == "48a18cd0f7d70409"
-    assert verify_tag(GOLDEN_UDP_KEY, b"abc", tag)
-    assert not verify_tag(GOLDEN_UDP_KEY, b"abd", tag)
-    assert not verify_tag(OTHER_UDP_KEY, b"abc", tag)
-
-
 # --------------------------------------------------------------- golden
 
 
 def test_golden_pack() -> None:
-    assert GOLDEN_CONTROL.pack(GOLDEN_UDP_KEY).hex() == GOLDEN_CONTROL_HEX
+    assert GOLDEN_CONTROL.pack().hex() == GOLDEN_CONTROL_HEX
 
 
 def test_golden_unpack() -> None:
-    pkt = ControlPacket.unpack(GOLDEN_CONTROL_BYTES, GOLDEN_UDP_KEY)
+    pkt = ControlPacket.unpack(GOLDEN_CONTROL_BYTES)
     assert pkt == GOLDEN_CONTROL
     assert pkt.session_id == 0x11223344
     assert pkt.sequence == 42
@@ -198,7 +125,7 @@ def test_golden_unpack() -> None:
 
 
 def test_golden_normalized_views() -> None:
-    pkt = ControlPacket.unpack(GOLDEN_CONTROL_BYTES, GOLDEN_UDP_KEY)
+    pkt = ControlPacket.unpack(GOLDEN_CONTROL_BYTES)
     assert pkt.steering_f == pytest.approx(-0.25)
     assert pkt.throttle_f == pytest.approx(0.75)
     assert pkt.brake_f == pytest.approx(0.0)
@@ -223,15 +150,9 @@ def test_from_normalized_reproduces_the_golden_packet() -> None:
 
 
 def test_pack_is_deterministic_and_non_mutating() -> None:
-    first = GOLDEN_CONTROL.pack(GOLDEN_UDP_KEY)
-    second = GOLDEN_CONTROL.pack(GOLDEN_UDP_KEY)
+    first = GOLDEN_CONTROL.pack()
+    second = GOLDEN_CONTROL.pack()
     assert first == second == GOLDEN_CONTROL_BYTES
-
-
-def test_key_changes_only_the_tag() -> None:
-    other = GOLDEN_CONTROL.pack(OTHER_UDP_KEY)
-    assert other[:SIGNED_LEN] == GOLDEN_CONTROL_BYTES[:SIGNED_LEN]
-    assert other[SIGNED_LEN:] != GOLDEN_CONTROL_BYTES[SIGNED_LEN:]
 
 
 # ---------------------------------------------------------- round trips
@@ -258,19 +179,19 @@ def test_round_trip_extremes(steering: int, throttle: int, brake: int) -> None:
         brake=brake,
         flags=ControlFlags.ESTOP,
     )
-    assert ControlPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY) == pkt
+    assert ControlPacket.unpack(pkt.pack()) == pkt
 
 
 def test_round_trip_every_defined_flag() -> None:
     for flag in ControlFlags:
         pkt = ControlPacket(session_id=1, sequence=1, client_time_us=1, flags=flag)
-        decoded = ControlPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY)
+        decoded = ControlPacket.unpack(pkt.pack())
         assert decoded.flags == flag
     combined = ControlFlags(0)
     for flag in ControlFlags:
         combined |= flag
     pkt = ControlPacket(session_id=1, sequence=1, client_time_us=1, flags=combined)
-    assert ControlPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY).flags == combined
+    assert ControlPacket.unpack(pkt.pack()).flags == combined
 
 
 def test_defined_flags_fit_the_wire_field() -> None:
@@ -291,7 +212,7 @@ def test_randomized_round_trip() -> None:
             brake=rng.randint(0, BRAKE_SCALE),
             flags=ControlFlags(rng.getrandbits(7)),
         )
-        assert ControlPacket.unpack(pkt.pack(GOLDEN_UDP_KEY), GOLDEN_UDP_KEY) == pkt
+        assert ControlPacket.unpack(pkt.pack()) == pkt
 
 
 # -------------------------------------------------------- normalization
@@ -359,46 +280,34 @@ def test_packet_is_immutable() -> None:
 # ----------------------------------------------------------- rejection
 
 
-def test_wrong_key_is_rejected() -> None:
-    with pytest.raises(ProtocolError, match="authentication"):
-        ControlPacket.unpack(GOLDEN_CONTROL_BYTES, OTHER_UDP_KEY)
-
-
-@pytest.mark.parametrize("index", range(CONTROL_PACKET_LEN))
-def test_single_bit_tamper_anywhere_is_rejected(index: int) -> None:
-    # Covers the body, the reserved field, and the tag itself -- every byte.
-    with pytest.raises(ProtocolError):
-        ControlPacket.unpack(flip_bit(GOLDEN_CONTROL_BYTES, index), GOLDEN_UDP_KEY)
-
-
 def test_bad_magic_is_rejected_before_the_hmac() -> None:
-    bad = _retag(splice(GOLDEN_CONTROL_BYTES, OFF_MAGIC, b"\x00\x00\x00\x00"))
+    bad = splice(GOLDEN_CONTROL_BYTES, OFF_MAGIC, b"\x00\x00\x00\x00")
     with pytest.raises(ProtocolError, match="magic"):
-        ControlPacket.unpack(bad, GOLDEN_UDP_KEY)
+        ControlPacket.unpack(bad)
 
 
 def test_telemetry_magic_is_not_accepted_as_control() -> None:
     from telekart_protocol.constants import MAGIC_TELEMETRY
 
-    bad = _retag(splice(GOLDEN_CONTROL_BYTES, OFF_MAGIC, MAGIC_TELEMETRY.to_bytes(4, "little")))
+    bad = splice(GOLDEN_CONTROL_BYTES, OFF_MAGIC, MAGIC_TELEMETRY.to_bytes(4, "little"))
     with pytest.raises(ProtocolError, match="magic"):
-        ControlPacket.unpack(bad, GOLDEN_UDP_KEY)
+        ControlPacket.unpack(bad)
 
 
-@pytest.mark.parametrize("version", [0, 1, 3, 255, 65535])
+@pytest.mark.parametrize("version", [0, 1, 2, 4, 255, 65535])
 def test_version_mismatch_is_rejected(version: int) -> None:
     if version == PROTO_VERSION:
         pytest.skip("that is the current version")
-    bad = _retag(splice(GOLDEN_CONTROL_BYTES, OFF_VERSION, version.to_bytes(2, "little")))
+    bad = splice(GOLDEN_CONTROL_BYTES, OFF_VERSION, version.to_bytes(2, "little"))
     with pytest.raises(ProtocolError, match="version"):
-        ControlPacket.unpack(bad, GOLDEN_UDP_KEY)
+        ControlPacket.unpack(bad)
 
 
 @pytest.mark.parametrize("length", [0, 1, 39, 41, 64, 128])
 def test_wrong_length_is_rejected(length: int) -> None:
     data = (GOLDEN_CONTROL_BYTES + bytes(128))[:length]
     with pytest.raises(ProtocolError, match="bytes"):
-        ControlPacket.unpack(data, GOLDEN_UDP_KEY)
+        ControlPacket.unpack(data)
 
 
 def test_protocol_error_is_a_value_error() -> None:
@@ -414,7 +323,7 @@ def test_garbage_only_ever_raises_protocol_error() -> None:
         size = rng.choice([0, 1, 20, 39, 40, 41, 200])
         data = bytes(rng.getrandbits(8) for _ in range(size))
         try:
-            ControlPacket.unpack(data, GOLDEN_UDP_KEY)
+            ControlPacket.unpack(data)
         except ProtocolError:
             pass
 
@@ -427,7 +336,7 @@ def test_out_of_range_wire_values_are_clamped_not_rejected() -> None:
     # sender bug than an attack. Dropping it would stall the control stream and
     # trip the failsafe, which is worse than clamping.
     tampered = splice(GOLDEN_CONTROL_BYTES, OFF_STEERING, struct.pack("<hhh", 5000, 30000, -5))
-    pkt = ControlPacket.unpack(_retag(tampered), GOLDEN_UDP_KEY)
+    pkt = ControlPacket.unpack(tampered)
     assert pkt.steering == STEERING_SCALE
     assert pkt.throttle == THROTTLE_SCALE
     assert pkt.brake == 0
@@ -435,32 +344,34 @@ def test_out_of_range_wire_values_are_clamped_not_rejected() -> None:
 
 def test_negative_steering_beyond_scale_is_clamped() -> None:
     tampered = splice(GOLDEN_CONTROL_BYTES, OFF_STEERING, struct.pack("<h", -30000))
-    assert ControlPacket.unpack(_retag(tampered), GOLDEN_UDP_KEY).steering == -STEERING_SCALE
+    assert ControlPacket.unpack(tampered).steering == -STEERING_SCALE
 
 
 def test_nonzero_reserved_field_is_accepted() -> None:
     # Reserved is documented as "must be 0" for senders but is deliberately not
     # enforced on receive, so a future build can use it without a version bump.
     tampered = splice(GOLDEN_CONTROL_BYTES, OFF_RESERVED, b"\xef\xbe")
-    assert ControlPacket.unpack(_retag(tampered), GOLDEN_UDP_KEY).steering == -250
+    assert ControlPacket.unpack(tampered).steering == -250
 
 
 def test_unknown_flag_bit_survives_decode() -> None:
     # A newer app may set a flag this firmware does not know. Preserving it is
     # what lets the value be forwarded to a log without loss.
     tampered = splice(GOLDEN_CONTROL_BYTES, OFF_FLAGS, struct.pack("<H", 1 << 15))
-    pkt = ControlPacket.unpack(_retag(tampered), GOLDEN_UDP_KEY)
+    pkt = ControlPacket.unpack(tampered)
     assert int(pkt.flags) & (1 << 15)
 
 
 # ------------------------------------------------------ peek_session_id
 
 
-def test_peek_session_id_reads_without_authenticating() -> None:
-    # Diagnostics only: it must work on a packet whose tag is garbage, because
+def test_peek_session_id_reads_without_full_parsing() -> None:
+    # Diagnostics only: it must work on a packet whose tail is garbage, because
     # "a packet arrived for a session I do not know" is worth logging cheaply.
-    forged = GOLDEN_CONTROL_BYTES[:SIGNED_LEN] + bytes(MAC_TAG_LEN)
-    assert peek_session_id(forged) == 0x11223344
+    mangled = GOLDEN_CONTROL_BYTES[:OFF_STEERING] + bytes(
+        CONTROL_PACKET_LEN - OFF_STEERING
+    )
+    assert peek_session_id(mangled) == 0x11223344
     assert peek_session_id(GOLDEN_CONTROL_BYTES) == 0x11223344
 
 
@@ -474,6 +385,6 @@ def test_peek_session_id_rejects_wrong_shape() -> None:
 def test_peek_session_id_matches_the_documented_offset() -> None:
     for session_id in (0, 1, 0x7FFFFFFF, 0xFFFFFFFF):
         pkt = ControlPacket(session_id=session_id, sequence=0, client_time_us=0)
-        data = pkt.pack(GOLDEN_UDP_KEY)
+        data = pkt.pack()
         assert struct.unpack_from("<I", data, OFF_SESSION)[0] == session_id
         assert peek_session_id(data) == session_id

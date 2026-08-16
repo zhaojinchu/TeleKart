@@ -69,7 +69,6 @@ from .constants import (
     ENV_BACKEND,
     ENV_CAR_ID,
     ENV_LOG_LEVEL,
-    ENV_SHARED_KEY,
     FIRMWARE_VERSION,
     GC_COLLECT_PERIOD_S,
     HEALTH_POLL_PERIOD_S,
@@ -1544,8 +1543,8 @@ class Application:
         )
 
     def _on_session_open(self, info: SessionInfo) -> None:
-        self.link.open_session(info.session_id, info.udp_key, info.peer_host)
-        self.telemetry.open_session(info.session_id, info.udp_key, info.telemetry_addr)
+        self.link.open_session(info.session_id, info.peer_host)
+        self.telemetry.open_session(info.session_id, info.telemetry_addr)
         # A valid session is one of the four things arming requires. Without
         # this the car would refuse every ARM and give a reason nobody could act
         # on from the app.
@@ -1864,12 +1863,7 @@ def load_config(options: AppOptions) -> VehicleConfig:
     if options.use_defaults:
         config = VehicleConfig()
         # VehicleConfig.load() applies the environment itself; the bare
-        # constructor does not. Without this, --defaults would silently ignore
-        # TELEKART_SHARED_KEY and every handshake would fail with auth_failed
-        # while the operator was certain they had set the key.
-        key = os.environ.get(ENV_SHARED_KEY)
-        if key:
-            config.shared_key = key
+        # constructor does not.
         car_id = os.environ.get(ENV_CAR_ID)
         if car_id:
             config.car_id = car_id

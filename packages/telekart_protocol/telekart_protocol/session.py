@@ -52,7 +52,6 @@ class MsgType(str, enum.Enum):
 
 class ErrorCode(str, enum.Enum):
     PROTOCOL_VERSION = "protocol_version"
-    AUTH_FAILED = "auth_failed"
     BAD_REQUEST = "bad_request"
     UNKNOWN_PARAM = "unknown_param"
     PARAM_OUT_OF_RANGE = "param_out_of_range"
@@ -131,10 +130,12 @@ def hello(
     msg_id: int,
     app_version: str,
     driver: str,
-    auth: str,
     telemetry_port: int,
 ) -> Message:
-    """App -> car. `auth` is the HMAC of the server nonce; see `nonce` below.
+    """App -> car. The first message the app sends, and the whole handshake.
+
+    There is no ``auth`` field: this build has no shared key. The car answers
+    with ``hello_ack`` and the session is open.
 
     The app tells the car which UDP port to send telemetry to rather than
     assuming the default, so two apps on one machine can coexist.
@@ -146,7 +147,6 @@ def hello(
             "proto": PROTO_VERSION,
             "app_version": app_version,
             "driver": driver,
-            "auth": auth,
             "telemetry_port": telemetry_port,
         },
     )
@@ -158,7 +158,6 @@ def hello_ack(
     car_id: str,
     fw_version: str,
     session_id: int,
-    session_token: str,
     caps: list[str],
     video_port: int,
     control_port: int,
@@ -171,7 +170,6 @@ def hello_ack(
             "car_id": car_id,
             "fw_version": fw_version,
             "session_id": session_id,
-            "session_token": session_token,
             "caps": caps,
             "video_port": video_port,
             "control_port": control_port,

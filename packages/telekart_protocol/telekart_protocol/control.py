@@ -1,6 +1,6 @@
 """ControlPacket -- app to car, ~100 Hz over UDP.
 
-Fixed 40 bytes. UDP and latest-wins on purpose: a control stream wants the
+Fixed 32 bytes. UDP and latest-wins on purpose: a control stream wants the
 newest command, never a retransmitted stale one, and TCP head-of-line blocking
 during a WiFi hiccup would deliver exactly the wrong thing.
 
@@ -17,7 +17,23 @@ Layout (little-endian, no padding)::
     26      2     brake            0 .. 1000
     28      2     flags            ControlFlags
     30      2     reserved         must be 0
-    32      8     mac_tag          truncated HMAC-SHA256 over bytes [0, 32)
+
+**There is no authentication tag.** Earlier revisions carried a truncated
+HMAC-SHA256 here, keyed per session. It was removed deliberately, and what it
+was actually defending against is worth stating so nobody re-adds it by
+accident and nobody assumes it is still there:
+
+The threat was never a determined attacker with a packet capture -- it was a
+*second or stale controller*. A reconnected laptop, an app instance that did
+not quite die, another machine on the LAN running a copy. The tag plus the
+strictly-increasing sequence meant the car accepted commands from exactly one
+session and ignored everything else.
+
+Without it, the remaining filters are the session id, the source-address pin
+the car takes from the TCP session, and the sequence check. Those stop
+*accidents* -- a stray packet, a reordered datagram, a process talking to the
+wrong car -- but any process that learns the session id and sends from the
+right host can drive.
 """
 
 from __future__ import annotations
@@ -27,23 +43,16 @@ from dataclasses import dataclass
 
 from .constants import (
     BRAKE_SCALE,
-    MAC_TAG_LEN,
     MAGIC_CONTROL,
     PROTO_VERSION,
     STEERING_SCALE,
     THROTTLE_SCALE,
     ControlFlags,
 )
-from .crypto import compute_tag, verify_tag
 
-_STRUCT = struct.Struct("<IHIIQhhhHH8s")
+_STRUCT = struct.Struct("<IHIIQhhhHH")
 CONTROL_PACKET_LEN = _STRUCT.size
-assert CONTROL_PACKET_LEN == 40, f"control packet layout drifted: {CONTROL_PACKET_LEN}"
-
-#: The tag covers everything before it. Because the tag is the trailing field,
-#: "the packet with the tag zeroed" and "the packet minus the tag" are the same
-#: bytes -- we use the latter, which removes any ambiguity about zero-filling.
-_SIGNED_LEN = CONTROL_PACKET_LEN - MAC_TAG_LEN
+assert CONTROL_PACKET_LEN == 32, f"control packet layout drifted: {CONTROL_PACKET_LEN}"
 
 
 class ProtocolError(ValueError):
@@ -113,8 +122,8 @@ class ControlPacket:
 
     # -- wire format --------------------------------------------------------
 
-    def pack(self, key: bytes) -> bytes:
-        body = _STRUCT.pack(
+    def pack(self) -> bytes:
+        return _STRUCT.pack(
             MAGIC_CONTROL,
             self.version,
             self.session_id,
@@ -125,16 +134,13 @@ class ControlPacket:
             self.brake,
             int(self.flags),
             0,
-            b"\x00" * MAC_TAG_LEN,
-        )[:_SIGNED_LEN]
-        return body + compute_tag(key, body)
+        )
 
     @classmethod
-    def unpack(cls, data: bytes, key: bytes) -> "ControlPacket":
-        """Parse and authenticate. Raises ProtocolError on any failure.
+    def unpack(cls, data: bytes) -> "ControlPacket":
+        """Parse. Raises ProtocolError on any failure.
 
-        Checks run cheapest-first so that garbage traffic costs almost nothing:
-        length, magic, and version are rejected before we spend an HMAC on it.
+        Checks run cheapest-first so that garbage traffic costs almost nothing.
         """
         if len(data) != CONTROL_PACKET_LEN:
             raise ProtocolError(
@@ -152,7 +158,6 @@ class ControlPacket:
             brake,
             flags,
             _reserved,
-            tag,
         ) = _STRUCT.unpack(data)
 
         if magic != MAGIC_CONTROL:
@@ -161,8 +166,6 @@ class ControlPacket:
             raise ProtocolError(
                 f"protocol version {version}, this build speaks {PROTO_VERSION}"
             )
-        if not verify_tag(key, data[:_SIGNED_LEN], tag):
-            raise ProtocolError("control packet failed authentication")
 
         return cls(
             session_id=session_id,
@@ -177,11 +180,10 @@ class ControlPacket:
 
 
 def peek_session_id(data: bytes) -> int | None:
-    """Read the session id without authenticating.
+    """Read the session id without fully parsing.
 
     Only for diagnostics -- "a packet arrived for a session I don't know about"
-    is worth logging, and doing it without an HMAC keeps the cost near zero.
-    Never use this to make a control decision.
+    is worth logging. Never use this to make a control decision.
     """
     if len(data) != CONTROL_PACKET_LEN:
         return None

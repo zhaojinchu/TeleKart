@@ -17,10 +17,10 @@
 
 car_id: telekart
 
-# Placeholder. Anyone on the network who knows it can drive the car, so set the
-# real one in config.local.yaml or export TELEKART_SHARED_KEY (the systemd unit
-# reads it from an EnvironmentFile). The firmware warns on every boot until you do.
-shared_key: change-me
+# There is no shared_key. This build has no authentication of any kind: anyone
+# who can reach port 4212 on this car can open a session and drive it. That is
+# a deliberate choice for a car that lives on a home network -- see control.py
+# in the protocol package for what it used to protect against.
 
 
 # --------------------------------------------------------------------------

@@ -1,16 +1,21 @@
 """The UDP endpoint the operator's commands arrive on.
 
-Four filters stand between a datagram and the H-bridge, in increasing order of
+Three filters stand between a datagram and the H-bridge, in increasing order of
 cost, because the cheap ones are what keep broadcast noise off the CPU:
 
-1. **Length and magic** -- one ``peek_session_id`` call, no HMAC.
-2. **Source address pinning** -- the host is taken from the authenticated TCP
-   session, not from the datagram. A second laptop on the LAN that somehow knew
-   the session id still cannot steer.
-3. **Authentication** -- truncated HMAC-SHA256 over a per-session key.
-4. **Strictly increasing sequence** -- a packet whose sequence is not greater
+1. **Length and magic** -- one ``peek_session_id`` call.
+2. **Source address pinning** -- the host is taken from the TCP session, not
+   from the datagram, and the port is pinned from the first accepted packet.
+3. **Strictly increasing sequence** -- a packet whose sequence is not greater
    than the last accepted one is dropped. On a 100 Hz stream where only the
    newest command matters, a reordered packet *is* a stale packet.
+
+There used to be a fourth: a truncated HMAC over a per-session key, sitting
+between 2 and 3. It was removed along with the rest of the shared-key layer.
+The consequence is worth being plain about -- filters 1-3 stop *accidents*, not
+*impersonation*. Any process that knows the session id and sends from the pinned
+host can now drive this car, including a copy of the app that you thought had
+exited.
 
 Nothing in this module raises. A decode failure increments a counter, updates a
 rate-limited log line, and returns. The receive path is one of the two places in
@@ -33,7 +38,7 @@ from ..util.clock import Clock
 _log = get_logger(__name__)
 
 #: Interval between "we are dropping packets" log lines. Fast enough to notice a
-#: problem, slow enough that a mismatched key cannot write 100 lines a second to
+#: problem, slow enough that a misdirected stream cannot write 100 lines a second to
 #: an SD card that the control loop is sharing.
 _DROP_LOG_INTERVAL_S = 5.0
 
@@ -64,7 +69,7 @@ class LinkStats:
     wrong_session: int = 0
     #: Came from a host or port that is not the operator's.
     wrong_source: int = 0
-    #: Failed authentication, or a protocol version this build does not speak.
+    #: A malformed packet, or a protocol version this build does not speak.
     rejected: int = 0
     #: Sequence not greater than the last accepted one.
     replayed: int = 0
@@ -99,12 +104,12 @@ class LinkStats:
             f"rx={self.received} ok={self.accepted} drop={self.dropped} "
             f"(bad={self.malformed} nosess={self.no_session} "
             f"wrongsess={self.wrong_session} wrongsrc={self.wrong_source} "
-            f"auth={self.rejected} replay={self.replayed})"
+            f"bad={self.rejected} replay={self.replayed})"
         )
 
 
 class ControlLink(asyncio.DatagramProtocol):
-    """Receives, authenticates and de-duplicates the 100 Hz command stream."""
+    """Receives and de-duplicates the 100 Hz command stream."""
 
     def __init__(
         self,
@@ -121,7 +126,6 @@ class ControlLink(asyncio.DatagramProtocol):
 
         self._transport: asyncio.DatagramTransport | None = None
         self._session_id = 0
-        self._key = b""
         self._peer_host = ""
         #: Learned from the first accepted datagram rather than from the TCP
         #: connection: the app's UDP source port is not its TCP source port, and
@@ -176,13 +180,12 @@ class ControlLink(asyncio.DatagramProtocol):
 
     # -- session ------------------------------------------------------------
 
-    def open_session(self, session_id: int, key: bytes, peer_host: str) -> None:
+    def open_session(self, session_id: int, peer_host: str) -> None:
         """Accept packets for ``session_id`` from ``peer_host`` only.
 
         Called from the session server once the TCP handshake has completed.
         """
         self._session_id = session_id
-        self._key = key
         self._peer_host = peer_host
         self._peer_port = 0
         # A fresh session starts a fresh sequence space. Keeping the old high
@@ -203,7 +206,6 @@ class ControlLink(asyncio.DatagramProtocol):
                 stats=self.stats.describe(),
             )
         self._session_id = 0
-        self._key = b""
         self._peer_host = ""
         self._peer_port = 0
         self._last_sequence = -1
@@ -230,8 +232,7 @@ class ControlLink(asyncio.DatagramProtocol):
             stats.malformed += 1
             return
 
-        key = self._key
-        if not key:
+        if not self._session_id:
             stats.no_session += 1
             self._maybe_log_drops("control packet with no session open")
             return
@@ -248,9 +249,9 @@ class ControlLink(asyncio.DatagramProtocol):
             return
 
         try:
-            packet = ControlPacket.unpack(data, key)
+            packet = ControlPacket.unpack(data)
         except ProtocolError as exc:
-            # Authentication or version failure. Counted and dropped: raising
+            # A malformed or wrong-version packet. Counted and dropped: raising
             # here would take the receive path down and, with it, the car.
             stats.rejected += 1
             stats.last_error = str(exc)

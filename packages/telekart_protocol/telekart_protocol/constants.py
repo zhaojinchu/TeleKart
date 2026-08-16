@@ -14,7 +14,13 @@ import enum
 #: Bumped on any incompatible change to packet layout or session semantics.
 #: The handshake rejects a mismatch outright rather than trying to negotiate --
 #: a silently-misparsed control packet is a runaway car.
-PROTO_VERSION = 2
+#:
+#: 3: authentication removed. The control packet lost its 8-byte tag (40 -> 32)
+#:    and telemetry lost its own (98 -> 90); the handshake lost the nonce
+#:    exchange, `auth` and `session_token`. Wholly incompatible with 2 in both
+#:    directions, which is exactly what this number is for -- a v2 app now gets
+#:    "car speaks protocol 3" instead of a confusing parse failure.
+PROTO_VERSION = 3
 
 #: Packet magic numbers. Present so a stray datagram from an unrelated service
 #: (or an old v1 ESP32 board still on the network) is rejected before we even
@@ -175,16 +181,13 @@ class VideoCodec(enum.IntEnum):
 
 
 # --------------------------------------------------------------------------
-# Authentication
+# Replay protection
 # --------------------------------------------------------------------------
 
-#: Truncated HMAC-SHA256 length in bytes. Eight bytes (widened from the old
-#: firmware's four) is ample to stop a stale second laptop from commanding the
-#: car, which is the actual threat model here -- not a determined attacker.
-MAC_TAG_LEN = 8
-
 #: Replay window. A control packet whose sequence is not greater than the last
-#: accepted one is dropped.
+#: accepted one is dropped. With the authentication tag gone this and the
+#: source-address pin are the only things standing between the car and a stale
+#: second controller, so it stays strict.
 SEQUENCE_REPLAY_WINDOW = 0  # strictly increasing
 
 

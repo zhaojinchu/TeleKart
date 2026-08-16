@@ -33,8 +33,8 @@ underscore means private and unstable. Suffix `_us`, `_ms`, `_mm` only when the 
 integer in that unit.
 
 **Typing.** Every public function is fully annotated. `from __future__ import annotations`
-at the top of every module. Target **Python 3.11** for `pi/`, `packages/`, and `tools/`;
-**Python 3.12** for `app/`. No PEP 695 generics anywhere.
+at the top of every module. Target **Python 3.11** for `pi/` and `packages/`; **Python 3.12**
+for `app/`. No PEP 695 generics anywhere.
 
 **Errors.** Fail loudly at construction and configuration time; never raise inside a control
 loop or a packet-decode path. Hot paths clamp, drop, and set a fault flag instead.
@@ -533,7 +533,12 @@ covers every case:
 
 ---
 
-## 9. Desktop app — `app/telekart_app/`
+## 9. Driving station — `app/telekart_ui/`
+
+Superseded `app/telekart_app/`, which remains in the tree for reference only and is not
+normative. One window: full-bleed video, a four-zone HUD, and a connect overlay. There is no
+parameter UI, no settings screen, no diagnostics screen and no controller calibration — those
+were removed deliberately, and §10 records what that cost.
 
 ### `core/latest_box.py`
 
@@ -567,7 +572,7 @@ class PacedLoop:
 | Qt main | 60 Hz tick | all widgets; **also pumps SDL events** |
 | `InputThread` | 250 Hz | reads cached SDL axes, runs the chain, writes a `LatestBox` |
 | `ControlTxThread` | 100 Hz | encodes and sends UDP; owns the sequence counter and RTT ring |
-| `TelemetryRxThread` | blocking recv | decodes, writes a `LatestBox` + the session recorder |
+| `TelemetryRxThread` | blocking recv | decodes, writes a `LatestBox` |
 | `VideoRxThread` | 30 fps | TCP framing + PyAV decode → `LatestBox[FrameBundle]`, drop-oldest |
 | `SessionClient` | event | TCP/JSON; low rate, so per-event Qt signals are fine here |
 
@@ -592,8 +597,15 @@ class AppModel(QObject):
     vehicleChanged = Signal(VehicleSnapshot)
     linkChanged   = Signal(LinkSnapshot)
     inputChanged  = Signal(InputSnapshot)
-    faultRaised   = Signal(int, str)
+    sessionChanged = Signal(SessionSnapshot)
+    faultRaised   = Signal(int, str)   # edge-triggered, one per newly-set bit
 ```
+
+**Every field on a snapshot is rendered somewhere.** The telemetry packet carries more than
+the snapshots do — per-wheel RPM and duty, odometry pose, distance, slip — and the station
+shows none of it, so none of it is lifted. Adding a field back is one line; carrying twenty
+that nothing paints is how the previous station reached a 27-field `LinkSnapshot` behind a
+HUD that showed four numbers.
 
 Four immutable snapshot dataclasses, replaced wholesale each tick — `VehicleSnapshot`,
 `LinkSnapshot`, `InputSnapshot`, `SessionSnapshot`. Immutability is what prevents a widget
@@ -655,42 +667,64 @@ feels laggy" and has nothing to do with the Pi.
 Conversion happens **on the decode thread** (`frame.reformat()` sized to the widget), so the
 GUI thread does a 1:1 blit and nothing else.
 
-### `ui/theme/tokens.py`
+### `ui/window.py` — keyboard driving
 
-One `Theme` dataclass — colors, spacing, radii, type scale — consumed by **both** the QSS
-template and every custom-painted widget. If QSS and `QPainter` keep separate palettes the
-app looks like two applications stitched together; a single token object is the fix.
+Four behaviours, each of which has shipped broken once and each of which has a test:
 
-`app.setStyle("Fusion")` before anything else: the macOS native style ignores much of QSS.
-Set a full `QPalette` too, since QSS does not cover scrollbar arrows, item-view selection, or
-disabled text.
+1. **Filter `isAutoRepeat()` on both press and release.** Qt synthesises a release/press pair
+   per repeat of a held key; forwarding them makes a held throttle look like tapping to the
+   rate limiter, which resolves to no throttle at all.
+2. **Alias WASD onto the arrows at the event boundary**, because `ControlBinding` holds one
+   ref per direction and both cannot be bound in the map.
+3. **Forward only while the driving surface has the window**, and only keys the profile binds.
+   Otherwise typing a passphrase steers the car and Space E-stops it mid-word.
+4. **Release every key on `WindowDeactivate`.** Alt-tab with the throttle held and the window
+   never sees the release; the app keeps transmitting full throttle, so no failsafe fires.
+
+**Escape leaves fullscreen and nothing else.** It must never disarm: an accidental disarm at
+speed leaves a car travelling with no drive and no steering authority.
+
+### `ui/theme.py`
+
+One palette and three fonts, consumed by **both** the ~40-line stylesheet and every
+custom-painted zone. If QSS and `QPainter` keep separate palettes the app looks like two
+applications stitched together.
+
+`app.setStyle("Fusion")` before any widget exists: the macOS native style ignores much of QSS,
+and Qt polishes widgets as they are constructed.
+
+**No icons.** The previous station generated 41 SVG icons and scaled the painter by
+`devicePixelRatio` while drawing onto a pixmap that already carried it — correct at dpr 1, a
+magnified corner at dpr 2, blank at dpr 3. Text and painted shapes cannot have that bug.
 
 ---
 
-## 10. Simulator — `tools/telekart_sim/`
+## 10. Developing with no hardware
 
-Protocol-identical or worthless. Same UDP ports, same TCP/JSON session, same mDNS service,
-same framed H.264 over TCP.
+**There is no simulator.** `tools/telekart_sim/` was removed. To develop without a car, run
+the real firmware on the development machine:
 
-Physics: kinematic bicycle plus the dynamic parts that matter — first-order motor lag, a
-**stall deadband below ~12 % duty** (real L298N behaviour), voltage sag under load, and
-**configurable wheelspin**. The wheelspin is essential rather than decorative: it is what any
-future traction control and slip indicator consume, and it cannot be developed against a
-model that never slips.
+```sh
+make run-car      # telekart-control --backend mock --defaults
+make run-camera   # telekart-video --synthetic
+```
 
-Encoders quantize to counts with ±1 noise, and RPM is derived **exactly the way the firmware
-derives it**. This matters more than it sounds: encoder RPM at low speed is chunky, and a HUD
-tuned against smooth synthetic values will misbehave the first time it meets real hardware.
+`MockBackend` carries the plant model (first-order motor lag, a stall deadband below ~12 %
+duty, voltage sag, encoder counts with ±1 noise, and RPM derived exactly the way the firmware
+derives it). `telekart_video`'s synthetic source encodes through PyAV when it is importable,
+so the stream is genuine H.264 inside the genuine 24-byte framing.
 
-Odometry publishes the dead-reckoned pose computed **from the noisy counts**, with injectable
-systematic error (`--track-width-error 3%`) — that is what lets drift-correction work be
-tested honestly.
+This is more faithful than the simulator was, because it *is* the firmware: the handshake,
+the arming preconditions, the failsafe ladder and the telemetry packet are the shipping
+implementations rather than a second one written to match.
 
-Required flags: `--seed`, `--realtime 0` (run as fast as possible, for CI), `--packet-loss`,
-`--latency`, `--jitter`, `--video-stall`, `--tcp-drop`, `--encoder-fault {left,right}`,
-`--battery-drain`, `--reject-arm`, `--proto-version`, `--track-width-error`, `--wheelspin`.
-
-Determinism under `--seed` is what lets integration tests assert exact numbers.
+**What was lost, and is not replaced.** The simulator could be made worse than reality on
+demand — `--packet-loss`, `--latency`, `--jitter`, `--tcp-drop`, `--video-stall`,
+`--encoder-fault`, `--reject-arm` — and `--seed` made a run bit-for-bit repeatable, which is
+what let integration tests assert exact numbers instead of ranges. It was also a second,
+independently written implementation of the protocol, and the two agreeing was the evidence
+that this document was unambiguous. Reintroducing a link-impairment layer is the obvious way
+to get the first half back; the second half needs a second implementation and nothing else.
 
 ---
 
@@ -701,8 +735,8 @@ Determinism under `--seed` is what lets integration tests assert exact numbers.
 | `packages/telekart_protocol` | Golden-byte tests, both directions, plus `struct.calcsize` assertions. **Run by both sides' suites** so a change that isn't reflected on both ends fails. |
 | Firmware logic | `MockBackend` + `FakeClock`. Deterministic, instant, no hardware. |
 | `input/chain.py` | Property tests: output always in range, monotonic in input, exact deadzone behaviour. |
-| Integration | `telekart-sim --realtime 0 --seed 1`, driving the net stack **with no Qt widgets**. |
-| UI | `pytest-qt` smoke: instantiate every screen, drive `AppModel` from a fixture, assert no `paintEvent` exceeds 8 ms. |
+| Keyboard | Every regression from `835ab3d` asserted: auto-repeat filtered on both edges, WASD aliased to the arrows, unbound keys not forwarded, all keys released on window deactivate, Space reaching the E-stop. |
+| UI | `pytest-qt`, driving `AppModel` from five bare `LatestBox` objects — no sockets, no SDL, no car. HUD zones asserted against the letterboxed picture rect from 1024×640 to 3840×2160. |
 | Soak | 60 minutes under `tracemalloc`, asserting stable RSS. Guards the `FrameBundle` lifetime. |
 
 ---

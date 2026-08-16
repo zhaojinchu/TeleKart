@@ -133,7 +133,6 @@ class TelemetrySender:
 
         self._sock: socket.socket | None = None
         self._session_id = 0
-        self._key = b""
         self._addr: tuple[str, int] | None = None
         self._sequence = 0
         self._running = False
@@ -165,9 +164,8 @@ class TelemetrySender:
         if sock is not None:
             sock.close()
 
-    def open_session(self, session_id: int, key: bytes, addr: tuple[str, int]) -> None:
+    def open_session(self, session_id: int, addr: tuple[str, int]) -> None:
         self._session_id = session_id
-        self._key = key
         self._addr = addr
         self._sequence = 0
         self.stats.sent = 0
@@ -180,7 +178,6 @@ class TelemetrySender:
             _log.info("telemetry session closed", session_id=self._session_id,
                       sent=self.stats.sent, errors=self.stats.errors)
         self._session_id = 0
-        self._key = b""
         self._addr = None
 
     # -- the loop -----------------------------------------------------------
@@ -247,7 +244,7 @@ class TelemetrySender:
         """Build and send one packet. Returns False when there was nothing to do."""
         sock = self._sock
         addr = self._addr
-        if sock is None or addr is None or not self._key:
+        if sock is None or addr is None or not self._session_id:
             self.stats.idle += 1
             return False
 
@@ -284,7 +281,7 @@ class TelemetrySender:
         )
 
         try:
-            sock.sendto(packet.pack(self._key), addr)
+            sock.sendto(packet.pack(), addr)
         except (BlockingIOError, InterruptedError):
             # The socket buffer is momentarily full. Dropping this sample is
             # correct: the next one is 20 ms away and carries newer numbers.
@@ -312,7 +309,7 @@ class TelemetrySender:
 
     @property
     def active(self) -> bool:
-        return bool(self._key) and self._addr is not None
+        return bool(self._session_id) and self._addr is not None
 
     @property
     def sequence(self) -> int:

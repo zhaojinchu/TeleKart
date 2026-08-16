@@ -43,7 +43,6 @@ GOLDEN_HELLO = hello(
     msg_id=7,
     app_version="2.0.0",
     driver="golden",
-    auth="0f1e2d3c4b5a6978",
     telemetry_port=UDP_TELEMETRY_PORT,
 )
 
@@ -51,8 +50,8 @@ GOLDEN_HELLO = hello(
 #: must stay stable enough for a golden test to be meaningful -- but a decoder
 #: on the other side that started depending on ordering would break here first.
 GOLDEN_HELLO_LINE = (
-    b'{"type":"hello","id":7,"proto":2,"app_version":"2.0.0","driver":"golden",'
-    b'"auth":"0f1e2d3c4b5a6978","telemetry_port":4211}\n'
+    b'{"type":"hello","id":7,"proto":3,"app_version":"2.0.0","driver":"golden",'
+    b'"telemetry_port":4211}\n'
 )
 
 
@@ -95,7 +94,6 @@ def test_golden_hello_decode() -> None:
         "proto": PROTO_VERSION,
         "app_version": "2.0.0",
         "driver": "golden",
-        "auth": "0f1e2d3c4b5a6978",
         "telemetry_port": 4211,
     }
 
@@ -137,7 +135,6 @@ def test_constructors_carry_the_protocol_version() -> None:
             car_id="kart-01",
             fw_version="2.0.0",
             session_id=0x11223344,
-            session_token="000102030405060708090a0b0c0d0e0f",
             caps=["video", "calibration"],
             video_port=TCP_VIDEO_PORT,
             control_port=UDP_CONTROL_PORT,
@@ -152,7 +149,6 @@ def test_hello_ack_round_trip() -> None:
         car_id="kart-01",
         fw_version="2.0.1",
         session_id=0xDEADBEEF,
-        session_token="00ff",
         caps=["video"],
         video_port=TCP_VIDEO_PORT,
         control_port=UDP_CONTROL_PORT,
@@ -396,7 +392,6 @@ def test_reader_survives_a_full_handshake_transcript() -> None:
                 car_id="kart-01",
                 fw_version="2.0.0",
                 session_id=0x11223344,
-                session_token="00112233445566778899aabbccddeeff",
                 caps=["video", "calibration"],
                 video_port=TCP_VIDEO_PORT,
                 control_port=UDP_CONTROL_PORT,

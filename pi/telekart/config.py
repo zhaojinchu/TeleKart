@@ -44,7 +44,6 @@ from .constants import (
     ENV_CAR_ID,
     ENV_CONFIG,
     ENV_LOCAL_CONFIG,
-    ENV_SHARED_KEY,
     HW_PWM_CHANNEL_0_PINS,
     HW_PWM_CHANNEL_1_PINS,
     LOCAL_CONFIG_PATH,
@@ -71,8 +70,6 @@ _log = get_logger(__name__)
 DEFAULT_CAR_ID = "telekart"
 #: Placeholder only. A car left on this key is refused by `check()`; the real
 #: key belongs in config.local.yaml or TELEKART_SHARED_KEY, neither of which is
-#: in git.
-PLACEHOLDER_SHARED_KEY = "change-me"
 
 #: Highest BCM pin number on a 40-pin header.
 _MAX_BCM_PIN = 27
@@ -281,7 +278,6 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
 
     pins: HardwarePins = field(default_factory=HardwarePins)
     car_id: str = DEFAULT_CAR_ID
-    shared_key: str = PLACEHOLDER_SHARED_KEY
     #: Where this came from, for the diagnostics banner.
     source_path: Path | None = field(default=None, repr=False)
     local_path: Path | None = field(default=None, repr=False)
@@ -363,8 +359,6 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
 
         if "car_id" in data:
             config.car_id = _as_str(data["car_id"], "car_id")
-        if "shared_key" in data:
-            config.shared_key = _as_str(data["shared_key"], "shared_key")
 
         config.extra = {
             key: value
@@ -399,8 +393,6 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
 
         if "car_id" in data:
             self.car_id = _as_str(data["car_id"], "car_id")
-        if "shared_key" in data:
-            self.shared_key = _as_str(data["shared_key"], "shared_key")
 
         raw_params = _collect_params(data, origin=origin)
         bad = unknown_or_invalid(raw_params)
@@ -425,12 +417,7 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
         return changed
 
     def _apply_environment(self) -> None:
-        """Environment beats file. This is how the shared key stays out of git:
-        the systemd unit reads it from an EnvironmentFile with 0600 permissions."""
-        key = os.environ.get(ENV_SHARED_KEY)
-        if key:
-            self.shared_key = key
-            _log.info("shared key taken from the environment", variable=ENV_SHARED_KEY)
+        """Environment beats file."""
         car_id = os.environ.get(ENV_CAR_ID)
         if car_id:
             self.car_id = car_id
@@ -443,18 +430,6 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
 
         if not self.car_id or not self.car_id.strip():
             raise ConfigError("car_id must not be empty")
-        if not self.shared_key:
-            raise ConfigError("shared_key must not be empty")
-        if self.shared_key == PLACEHOLDER_SHARED_KEY:
-            # Not fatal: bench work with a mock backend is legitimate. But an
-            # unattended car on the shared campus network with the published
-            # default key is a real hazard, so it is a warning every boot.
-            _log.warning(
-                "shared_key is still the checked-in placeholder; anyone on the "
-                "network can drive this car",
-                fix=f"set shared_key in config.local.yaml or export {ENV_SHARED_KEY}",
-            )
-
         if self.steer_min_us >= self.steer_max_us:
             raise ConfigError(
                 f"steer_min_us ({self.steer_min_us}) must be below "
@@ -576,8 +551,6 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
         payload: dict[str, Any] = {}
         if self.car_id != DEFAULT_CAR_ID:
             payload["car_id"] = self.car_id
-        if self.shared_key not in (PLACEHOLDER_SHARED_KEY, ""):
-            payload["shared_key"] = self.shared_key
         changed = self.changed_params()
         if changed:
             payload["params"] = changed
@@ -590,7 +563,7 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
             "# improvements to the checked-in defaults still reach this car.\n"
             "# This file is git-ignored: it holds measurements and the shared key.\n"
         )
-        _write_yaml_atomic(path, payload, header=header, secret=bool(payload.get("shared_key")))
+        _write_yaml_atomic(path, payload, header=header, secret=False)
         self.local_path = path
         _log.info("local config written", path=str(path), keys=len(payload))
 
@@ -611,7 +584,7 @@ class VehicleConfig(_ParamsBase):  # type: ignore[valid-type, misc]
         return f"VehicleConfig({self.summary()})"
 
 
-_KNOWN_TOP_LEVEL = frozenset({"pins", "params", "car_id", "shared_key"})
+_KNOWN_TOP_LEVEL = frozenset({"pins", "params", "car_id"})
 
 
 def _collect_params(data: dict[str, Any], *, origin: str) -> dict[str, Any]:

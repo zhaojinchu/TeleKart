@@ -2,7 +2,7 @@
 
 A teleoperated RC car you drive from a desk. A Raspberry Pi Zero 2 W runs a 100 Hz closed-loop
 controller over WiFi; a macOS station renders a low-latency camera feed and a live telemetry HUD
-and takes input from a force-feedback wheel and pedals.
+and takes input from a wheel and pedals, or from WASD.
 
 The whole system is built around one idea: **the car owns safety, the desk owns feel.** The
 firmware clamps duty, limits servo slew, detects stalls and runs the failsafe ramp. The app owns
@@ -10,7 +10,7 @@ curves, deadzones, smoothing and expo. Neither side does the other's job, and ne
 filters what the other already filtered — that division is why the loop is tunable at all.
 
 Everything that crosses the network is defined once, in `packages/telekart_protocol/`, and
-imported unmodified by all three programs. Its test suite asserts hard-coded byte strings in both
+imported unmodified by both programs. Its test suite asserts hard-coded byte strings in both
 directions and is run by both halves of the system, so a change that isn't reflected on both ends
 fails immediately rather than at 3 m/s.
 
@@ -42,22 +42,22 @@ Dead reckoning without an IMU drifts. Expect **5–15 % closure error on a 5 m s
 ## Architecture
 
 ```
-┌── macOS driving station · app/ ──────────────────────────────────────────────┐
+┌── macOS driving station · app/telekart_ui/ ──────────────────────────────────┐
 │                                                                              │
-│   wheel + pedals ──▶ InputThread 250 Hz ──▶ ControlTxThread 100 Hz           │
-│   SDL via pygame-ce  calibrate · deadzone    quantize · sequence · HMAC      │
-│                      curve LUT · rate limit  owns the RTT ring               │
-│                      one-euro smoothing                                      │
+│   wheel or WASD ───▶ InputThread 250 Hz ──▶ ControlTxThread 100 Hz           │
+│   SDL via pygame-ce  deadzone · curve LUT    quantize · sequence · HMAC      │
+│                      rate limit · one-euro   owns the RTT ring               │
+│                      fixed config, no UI                                     │
 │                                                                              │
 │   VideoRxThread ─────┐                                                       │
 │   PyAV · LOW_DELAY   │                                                       │
-│   thread_type='NONE' ├──▶ AppModel 60 Hz ──▶ Qt HUD · map · tuning UI        │
+│   thread_type='NONE' ├──▶ AppModel 60 Hz ──▶ one window: video + 4 HUD zones │
 │                      │    immutable snapshots, one consistent set            │
 │   TelemetryRxThread ─┘    per repaint — never a torn mix                     │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
         │ UDP  4210  control    100 Hz     ▲ UDP 4211  telemetry  50 Hz
-        │ TCP  4212  session, params, arm  │ TCP 4213  framed H.264
+        │ TCP  4212  session, arm/disarm   │ TCP 4213  framed H.264
         ▼            dropping it = E-stop  │ mDNS _telekart._tcp.local.
 ┌── Raspberry Pi Zero 2 W · pi/ ───────────────────────────────────────────────┐
 │                                                                              │
@@ -119,19 +119,17 @@ TeleKart/
 │   ├── native/                   Optional C encoder helper
 │   └── scripts/                  Bring-up and calibration utilities
 │
-├── app/telekart_app/             macOS driving station.
-│   ├── core/                       LatestBox, PacedLoop — the threading primitives
-│   ├── input/                      calibration → curve → filter chain, and force feedback
-│   ├── net/                        control TX, telemetry RX, session client, discovery
-│   ├── video/                      PyAV decode and FrameBundle lifetime management
-│   ├── model/                      AppModel: the only object widgets talk to
-│   ├── ui/                         screens, HUD gauges, dialogs, theme tokens
-│   ├── race/  storage/             lap timing, session recording
-│   └── config/  assets/
+├── app/telekart_ui/              macOS driving station. One window, one screen.
+│   └── telekart_ui/
+│       ├── core/                   LatestBox, PacedLoop — the threading primitives
+│       ├── input/                  SDL wheel + keyboard → shaping chain → 250 Hz thread
+│       ├── net/                    control TX, telemetry RX, session client, supervisor
+│       ├── video/                  PyAV decode and FrameBundle lifetime management
+│       ├── model/                  AppModel: the only object widgets talk to
+│       └── ui/                     the window, the HUD, the connect panel
 │
-├── tools/telekart_sim/           A protocol-identical fake car. Same ports, same
-│                                 packets, same mDNS, real H.264. Deterministic
-│                                 under --seed.
+├── app/telekart_app/             The previous station. Kept for reference only;
+│                                 superseded by telekart_ui and due for deletion.
 ├── docs/                         See below.
 └── Makefile                      make help
 ```
@@ -140,37 +138,32 @@ TeleKart/
 
 ## Quickstart — no hardware
 
-You need nothing but a Mac. The simulator speaks the real protocol on the real ports, so the
-entire app is exercised end to end: discovery, handshake, arming, control, telemetry, video
-decode.
+You need nothing but a Mac. **Run the real firmware locally**: the same 100 Hz control loop
+against a mock GPIO backend that carries the plant model, and the camera process emitting
+synthetic H.264 through the real framing. The handshake, the failsafe ladder and the telemetry
+packet are the genuine ones, not a second implementation of them.
 
 ```sh
 git clone <this repo> TeleKart && cd TeleKart
 
-make setup-app      # creates app/.venv on Python 3.12 — pulls Qt, give it a minute
-make setup-sim      # creates tools/telekart_sim/.venv
+make setup-ui       # creates app/.venv on Python 3.12 — pulls Qt, give it a minute
+make setup-pi       # creates pi/.venv; off Linux it skips pigpio and uses MockBackend
 ```
 
-Then, in two terminals:
+Then, in three terminals:
 
 ```sh
-make run-sim ARGS="--seed 1"     # terminal 1: a fake car appears on the network
-make run-app                     # terminal 2: it shows up in the discovery list
+make run-car        # terminal 1: the firmware, on a mock backend
+make run-camera     # terminal 2: synthetic H.264 on TCP 4213
+make run-ui         # terminal 3: connect to 127.0.0.1, passphrase "change-me"
 ```
 
-The point of the simulator is that it can be **worse than reality on demand**. Every one of these
-is a bug class you would otherwise only meet outdoors, at speed:
-
-```sh
-make run-sim ARGS="--seed 1 --packet-loss 0.05 --latency 80 --jitter 30"
-make run-sim ARGS="--seed 1 --video-stall 2.0 --tcp-drop 15"
-make run-sim ARGS="--seed 1 --encoder-fault left --wheelspin 0.3"
-make run-sim ARGS="--seed 1 --reject-arm --battery-drain 0.02"
-make run-sim ARGS="--realtime 0 --seed 1"    # as fast as possible, for CI
-```
-
-`--seed` makes the physics and the noise deterministic, which is what lets integration tests
-assert exact numbers instead of ranges.
+> There used to be a `telekart-sim` here — a separately written fake car with fault injection
+> (`--packet-loss`, `--tcp-drop`, `--encoder-fault`) and seeded, exactly repeatable runs. It is
+> gone. What went with it is the ability to reproduce a link failure on demand, and the
+> cross-check of two independent protocol implementations agreeing. The golden-byte tests in
+> `packages/telekart_protocol/tests/` still pin the wire format, but they test one
+> implementation against fixed bytes rather than two against each other.
 
 Run the tests while you are here — they need no hardware and no display:
 
@@ -219,11 +212,11 @@ until you have finished bring-up.
 Then, from the Mac:
 
 ```sh
-make run-app          # the car advertises itself over mDNS; pick it from the list
+make run-ui           # type the car's name (telekart.local) and the passphrase
 ```
 
-The desktop app and the car must share the same secret; enter the same passphrase in the app's
-connection dialog. It is hashed into key material and never travels over the wire — the UDP
+The station and the car must share the same secret; enter the same passphrase in the connect
+panel. It is hashed into key material and never travels over the wire — the UDP
 tagging key is derived per session from a token issued during the TCP handshake, so the secret
 itself is never on the network and never in a screenshot of a running app.
 
@@ -305,32 +298,31 @@ the contract, and the tests are its proof.
 
 ## Development
 
-Three environments, kept separate on purpose:
+Two environments, kept separate on purpose:
 
 | Environment | Python | Why pinned |
 |---|---|---|
 | `app/.venv` | 3.12 (`>=3.12,<3.14`) | PySide6-Essentials 6.11 and pygame-ce wheels. The ceiling is a wheel-availability fact, not a guess. |
-| `pi/.venv` | 3.11 | What Bookworm ships. Created with `--system-site-packages` so the apt-installed picamera2/libcamera bindings remain visible. |
-| `tools/telekart_sim/.venv` | 3.11+ | Runnable from either side, so the Pi's network stack can be integration-tested with no desktop app in the loop. |
+| `pi/.venv` | 3.11 | What Bookworm ships. Created with `--system-site-packages` so the apt-installed picamera2/libcamera bindings remain visible. Also what `make run-car` uses on a Mac, with MockBackend standing in for pigpio. |
 
 ```
 make help          list every target with its description
 
-make setup-app     desktop station            make run-app     launch the GUI
-make setup-pi      firmware (run on the Pi)   make run-sim     serve a fake car
-make setup-sim     simulator                  make run-cli     headless client
+make setup-ui      driving station            make run-ui      launch the station
+make setup-pi      firmware                   make run-car     firmware, mock backend
+                                              make run-camera  synthetic H.264
 
 make test          every suite that has an environment; the rest are skipped, loudly
 make test-protocol golden-byte wire tests     make test-pi     firmware, no hardware
-make test-app      pytest-qt, offscreen       make lint        ruff, or a compile check
+make test-ui       pytest-qt, offscreen       make lint        ruff, or a compile check
 
-make clean         caches and build output    make clean-venvs remove the three venvs
+make clean         caches and build output    make clean-venvs remove both venvs
 ```
 
 `ARGS=` is forwarded to the `run-*` targets, `PYTEST_ARGS=` to the `test-*` ones:
 
 ```sh
-make run-sim ARGS="--seed 7 --latency 120"
+make run-ui ARGS="--host 192.168.1.50 --fullscreen"
 make test-protocol PYTEST_ARGS="-k golden -v"
 ```
 
@@ -341,8 +333,8 @@ make test-protocol PYTEST_ARGS="-k golden -v"
 | `telekart_protocol` | Golden byte strings asserted in both directions, plus `struct.calcsize` pins, tamper rejection, version-mismatch rejection, saturation/NaN handling, fragmented and coalesced framing. **Run by both sides' suites** so a one-sided change fails. |
 | Firmware logic | `MockBackend` + `FakeClock`. A simulated 60-second drive runs in milliseconds and gives the same answer every time. |
 | Input chain | Property tests: output always in range, monotonic in input, exact deadzone behaviour. |
-| Integration | `telekart-sim --realtime 0 --seed 1`, driving the network stack with no Qt widgets. |
-| UI | `pytest-qt` smoke tests: instantiate every screen, drive `AppModel` from a fixture, assert no `paintEvent` exceeds 8 ms. |
+| Keyboard | The four regressions from `835ab3d`, each asserted: auto-repeat filtered on both edges, WASD aliased to the arrows, unbound keys ignored, every key released on window deactivate. |
+| UI | `pytest-qt`, driving `AppModel` from five bare `LatestBox` objects — no sockets, no SDL, no car. HUD zones asserted against the letterboxed picture rect at 1024x640 through 3840x2160. |
 | Soak | 60 minutes under `tracemalloc` asserting stable RSS. Guards `FrameBundle` lifetime — wrapping a PyAV plane in a `QImage` without holding the frame alive is a use-after-free that crashes intermittently. |
 
 No module in the firmware calls `time.monotonic()` directly. A `Clock` is constructor-injected
