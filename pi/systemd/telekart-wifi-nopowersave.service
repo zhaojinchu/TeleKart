@@ -1,0 +1,36 @@
+[Unit]
+Description=Disable WiFi power save on the TeleKart radio
+Documentation=file:/home/pi/telekart/docs/pi-setup.md
+# WantedBy sys-subsystem-net-devices-wlan0.device would be tidier, but the
+# device unit only appears once the driver has probed, and on a Zero 2 W that
+# can be after multi-user.target. Ordering after NetworkManager and re-running
+# on every boot is more reliable than being clever.
+After=NetworkManager.service network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Belt and braces with /etc/NetworkManager/conf.d/99-wifi-powersave-off.conf.
+# The NetworkManager setting is the durable one; this unit covers the case where
+# the connection profile was created before that file existed, or where the
+# interface came up under something other than NetworkManager.
+#
+# Why this matters at all: with power save on, the access point buffers downlink
+# frames until the next beacon. At a typical 100 ms beacon interval that is up
+# to 100 ms of added latency, in bursts, landing squarely inside the 200 ms
+# CONTROL_TIMEOUT_MS window -- so it presents as random failsafe trips that look
+# exactly like a firmware bug.
+#
+# Each '-' prefix keeps a missing tool or an absent interface from failing the
+# boot; a car with slightly worse latency still drives, a car that refused to
+# boot does not.
+ExecStart=-/usr/sbin/iw dev wlan0 set power_save off
+# Prints "Power save: off" into the journal, so `systemctl status` answers the
+# question instead of requiring another command at the moment you are debugging
+# a latency spike.
+ExecStartPost=-/usr/sbin/iw dev wlan0 get power_save
+
+[Install]
+WantedBy=multi-user.target

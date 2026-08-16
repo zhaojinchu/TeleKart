@@ -1,6 +1,63 @@
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Editors
+.idea/
+.vscode/
+*.swp
 
 # Python
-.venv/
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+build/
+dist/
+.coverage
+.coverage.*
+htmlcov/
 
+# Virtual environments.
+#
+# `make setup-app|setup-pi|setup-sim` create app/.venv, pi/.venv and
+# tools/telekart_sim/.venv. The trailing-slash-only forms below would miss a
+# hand-made one named .venv312, .venv3.12, venv-pi or similar -- and a stray
+# root venv is six thousand files one `git add -A` away from the history.
+.venv
+venv
+.venv*/
+venv*/
+env/
+ENV/
+pyvenv.cfg
+
+# Secrets. The UDP tagging key is derived per session, but the shared passphrase
+# these hold is what the whole handshake rests on -- see README "Quickstart --
+# the real car" and pi/systemd/telekart-control.service's EnvironmentFile=.
+.env
+*.env
+telekart.env
+.telekart-env
+
+# Per-vehicle / machine-written config.
+# telekart.yaml IS checked in: it is the same on every car. These two are not --
+# a value measured on one vehicle must never silently become another's default.
+pi/config/config.local.yaml
+pi/config/calibration.yaml
+
+# Native build artifacts
+pi/native/*.o
+pi/native/*.so
+pi/native/telekart_encoder
+
+# Recorded sessions and captured logs
+*.tksession
+*.tklap
+sessions/
+*.log

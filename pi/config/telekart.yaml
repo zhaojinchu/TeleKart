@@ -1,0 +1,198 @@
+# TeleKart v2 -- default vehicle configuration.
+#
+# This file is checked into git and is identical on every car. Anything measured
+# on a *particular* vehicle (servo centre, steering lock, encoder count, the
+# shared key) belongs in config.local.yaml, which is git-ignored and which
+# overrides everything here. Machine-written calibration goes in a third file,
+# calibration.yaml, so an automated bring-up run can never clobber a value
+# somebody typed on purpose.
+#
+# Every key under `params:` comes from telekart_protocol/params.py. That registry
+# is the single source of truth for names, ranges and units: the firmware
+# validates against it and the desktop tuning UI is generated from it. A value
+# here that is out of range is logged and ignored, not fatal -- a car that
+# refuses to boot over one bad number is worse than a car running the default.
+#
+# Grouping below is cosmetic; flat `params:` mappings load identically.
+
+car_id: telekart
+
+# Placeholder. Anyone on the network who knows it can drive the car, so set the
+# real one in config.local.yaml or export TELEKART_SHARED_KEY (the systemd unit
+# reads it from an EnvironmentFile). The firmware warns on every boot until you do.
+shared_key: change-me
+
+
+# --------------------------------------------------------------------------
+# Pin assignment, BCM numbering. These describe how the board is soldered.
+# Changing one here without moving a wire will not end well.
+# --------------------------------------------------------------------------
+pins:
+  motors:
+    # ENA and ENB must be GPIO12 and GPIO13: they are the only pins that reach
+    # hardware PWM channels 0 and 1 on this header. The two channels share one
+    # clock divider, which is why the firmware only ever writes them as a pair.
+    ena: 12
+    in1: 5
+    in2: 6
+    in3: 20
+    in4: 21
+    enb: 13
+
+  encoders:
+    # Hall quadrature, VCC from the Pi's 3.3 V rail. Channel A carries the
+    # edge callbacks (x2 decoding); channel B is polled once per control tick
+    # purely as a direction-disagreement check.
+    left_a: 23
+    left_b: 24
+    right_a: 27
+    right_b: 22
+
+  # GPIO18 is also PWM0 -- the same channel as ENA -- so hardware PWM is
+  # physically unavailable here. pigpio's DMA-timed pulses are used instead,
+  # and they are better anyway: a couple of microseconds of jitter.
+  servo: 18
+
+  status_led: 25
+  # Momentary to ground, internal pull-up. Idle reads HIGH.
+  estop_button: 16
+
+
+params:
+
+  # ------------------------------------------------------------------ drive
+  drive:
+    # Ceiling on any single motor.
+    max_duty: 0.85
+
+    # Ceiling on the SUM of both motors. This is the important one: the
+    # S18V20ALV sustains about 1.5 A for both motors combined, and it is
+    # simultaneous demand that trips it, not either motor alone. A full-throttle
+    # step from rest asks for roughly 4 A and browns out the whole rail.
+    duty_sum_max: 1.40
+
+    closed_loop: true
+    throttle_expo: 1.8
+    throttle_deadband: 0.04
+
+    # Rate-limits the RPM *target*, not the duty. Inrush during a throttle step
+    # is what trips the regulator, and limiting acceleration is what prevents it
+    # -- 250 RPM/s keeps peak demand comfortably under 1 A per motor.
+    accel_rpm_per_s: 250.0
+    # Deceleration may be much faster: coming down costs no current.
+    decel_rpm_per_s: 700.0
+
+    # Duty applied to the shorted bridge when braking. Higher stops harder and
+    # dumps more energy into the L298N, whose stock heatsink handles 2-3 W.
+    brake_strength: 0.40
+
+    reverse_enabled: true
+    pit_duty: 0.25
+
+  # -------------------------------------------------------------------- pid
+  # Feedforward carries the load and the PID only trims it; that is what makes
+  # this tunable at all when the plant gain is roughly 2x uncertain. Start with
+  # Ki doing the work -- integral action against a feedforward baseline is far
+  # better behaved here than proportional gain on a noisy encoder velocity.
+  pid:
+    pid_kp: 0.005
+    pid_ki: 0.020
+    # Leave at zero. Encoder velocity at 660 cpr and 100 Hz is chunky enough
+    # that derivative action amplifies quantisation noise into duty chatter.
+    pid_kd: 0.0
+    pid_i_clamp: 0.40
+    # Corrects left/right distance divergence when driving straight. Active only
+    # near centre, because away from centre it would fight the electronic
+    # differential, which is deliberately making the wheels turn at different rates.
+    straight_sync_gain: 30.0
+
+  # --------------------------------------------------------------- steering
+  # Every value here is a placeholder until servo_calibrate has been run on this
+  # car. Do not copy them from another vehicle and do not seed them from the old
+  # ESP32 firmware -- the linkage geometry is not the same.
+  steering:
+    steer_center_us: 1500
+    steer_min_us: 1200
+    steer_max_us: 1800
+    # Fine centre adjustment, and the single biggest lever on odometry heading
+    # drift. A car that pulls left has a trim error, not a bad PID.
+    steer_trim_us: 0
+    # Measured at full lock with a protractor. Feeds both the odometry model and
+    # the electronic differential, so a guess here quietly corrupts both.
+    steer_max_deg: 24.0
+    # Slew limit. Also caps the servo's peak current draw, which matters because
+    # it shares the Pi's 5 V rail: a full-lock slam can brown out the SoC.
+    steer_rate_us_per_s: 2000.0
+    steer_expo: 1.0
+    steer_deadzone: 0.03
+    steer_speed_reduction: 0.45
+    # Never rewrite a pulse that differs from the last by less than this. It is
+    # what stops the servo buzzing at centre, and it is carried over from the
+    # old firmware deliberately.
+    steer_hold_us: 8
+    steer_invert: false
+    # Stops the pulse train when disarmed so holding current drops to near zero.
+    servo_relax_when_disarmed: true
+
+  # --------------------------------------------------------------- geometry
+  geometry:
+    wheel_diameter_m: 0.065
+    wheelbase_m: 0.200
+    track_width_m: 0.150
+    # Counts per revolution of the OUTPUT shaft under x2 decoding: 11 pulses per
+    # motor revolution, two edges each, through a 30:1 gearbox. Verify by
+    # hand-turning the wheel ten revolutions and dividing -- do not trust the
+    # nameplate gear ratio, which is nominal.
+    encoder_cpr: 660
+    invert_left: false
+    invert_right: false
+    encoder_invert_left: false
+    encoder_invert_right: false
+
+  # ----------------------------------------------------------------- safety
+  safety:
+    # Relaxed from the old firmware's 120 ms: Pi Zero 2 W WiFi is markedly
+    # lumpier than the ESP32's, and a spurious failsafe mid-corner is its own
+    # hazard. The failsafe schedule after this expires is coast, brake, coast,
+    # disarm -- an unbraked car rolls for metres.
+    control_timeout_ms: 200
+    failsafe_brake_duty: 0.35
+
+    # Stall detection is hardware protection, not a nicety: two stalled motors
+    # put about 7 W into a bridge rated for a third of that.
+    stall_detect_ms: 600
+    stall_rpm_threshold: 5.0
+
+    # Zero disables. No battery sensing is fitted on this build, so these only
+    # take effect once a divider exists on the pack.
+    low_battery_v: 6.0
+    critical_battery_v: 5.4
+
+    # Arming requires all four of: an explicit ARM, throttle held at neutral for
+    # this long, a valid session, and no active critical fault.
+    arm_neutral_ms: 500
+
+  # -------------------------------------------------------------------- pwm
+  pwm:
+    # 1 kHz keeps Darlington switching loss near 0.4 % of the period. Higher is
+    # quieter but wastes more in the bridge; lower is audible in the gearbox.
+    # Both channels share one divider and are always written together.
+    pwm_hz: 1000
+    # Dead time between dropping the enable and flipping the direction pins.
+    # Flipping IN pins under a live enable is a shoot-through across the bridge.
+    direction_deadtime_ms: 30
+    # A direction change is refused until the wheel is below this. Reversing a
+    # spinning motor is a short across the back-EMF.
+    reverse_allowed_rpm: 15.0
+
+  # ------------------------------------------------------------------ video
+  video:
+    video_codec: h264
+    video_width: 640
+    video_height: 480
+    video_fps: 30
+    video_bitrate: 2000000
+    # The Pi's hardware encoder cannot honour on-demand keyframe requests, so a
+    # short GOP is the only recovery mechanism after packet loss. 15 frames at
+    # 30 fps is half a second of worst-case corruption.
+    video_iperiod: 15

@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telekart-app"
+version = "2.0.0"
+description = "TeleKart desktop driving station: low-latency video, force-feedback wheel input, telemetry HUD, and tuning."
+
+# Floor is 3.12 because that is what the whole app is written against. Ceiling
+# is 3.14 because the binary wheels are not all there yet -- see the pygame-ce
+# note below. Both bounds are deliberate; neither is a guess about the future.
+requires-python = ">=3.12,<3.14"
+
+dependencies = [
+    # Essentials, not the full PySide6: the full package pulls WebEngine, 3D,
+    # Charts and Multimedia -- roughly a gigabyte of Qt this app never loads.
+    "PySide6-Essentials==6.11.*",
+
+    # PyAV must stay on a version whose Flags enum still exposes LOW_DELAY and
+    # whose CodecContext honours thread_type='NONE'. Frame threading buffers
+    # 3-5 frames before emitting anything, which is 100-170 ms of latency and
+    # the single most common cause of "H.264 teleop feels laggy".
+    "av>=14,<19",
+
+    # pygame-ce, NOT pygame. The two are drop-in compatible at the SDL2 API
+    # level, but upstream pygame has no cp314 wheel and its release cadence has
+    # left macOS arm64 builds lagging by months. pygame-ce ships wheels for
+    # every interpreter this app supports. Installing both into one environment
+    # breaks imports -- they claim the same `pygame` module name.
+    "pygame-ce>=2.5.8",
+
+    "zeroconf>=0.147",
+    "numpy>=2,<3",
+    "pyqtgraph>=0.13",
+    "platformdirs>=4",
+
+    # Resolved from the sibling checkout, never from an index -- same story as
+    # in pi/pyproject.toml. `make setup-app` installs it first, by path.
+    "telekart-protocol>=2.0,<3.0",
+]
+
+[project.optional-dependencies]
+# MUST be the headless build. The GUI OpenCV wheels link their own Qt and their
+# own Cocoa event handling; loading that into a process that already has
+# PySide6's Qt gives you two Qt stacks fighting over one NSApplication, and the
+# app dies on the first cv2 window call -- or, worse, at a random later moment.
+# opencv-contrib for the ArUco/objdetect modules used by the track marker work.
+vision = ["opencv-contrib-python-headless>=4.12,<5"]
+
+dev = ["pytest>=8", "pytest-qt>=4.4"]
+
+[project.gui-scripts]
+telekart = "telekart_app.__main__:main"
+
+[tool.uv.sources]
+telekart-protocol = { path = "../packages/telekart_protocol", editable = true }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["telekart_app", "telekart_app.*"]
+
+[tool.setuptools.package-data]
+telekart_app = ["assets/fonts/*", "assets/icons/*", "config/*.json", "config/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

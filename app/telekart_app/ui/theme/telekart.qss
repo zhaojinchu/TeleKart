@@ -1,0 +1,880 @@
+/* TeleKart desktop stylesheet.
+ *
+ * Every value in {{double braces}} is substituted from ui/theme/tokens.py by
+ * qss.build_qss(). An unknown token raises at build time rather than silently
+ * leaving the literal text in the sheet, where it would show up as an
+ * unstyled control three screens deep.
+ *
+ * Rules for editing this file:
+ *
+ *  - No literal colours, sizes or radii. If a value is missing, add a derived
+ *    token in qss.py so the painted instruments can see it too.
+ *  - Style every control explicitly, including the ones nobody has used yet.
+ *    Default Qt scrollbars and default table headers are the two things that
+ *    instantly mark an application as unstyled, and they appear the first time
+ *    a list gets long enough or a table gets wide enough.
+ *  - Do not set `background` on bare QWidget. It leaks into every child that
+ *    was supposed to be transparent. Surfaces are named.
+ */
+
+/* ------------------------------------------------------------------ base */
+
+QMainWindow,
+QDialog,
+QWidget#Root {
+    background-color: {{color.bg_base}};
+}
+
+QWidget {
+    color: {{color.text_primary}};
+    selection-background-color: {{sel.bg}};
+    selection-color: {{color.text_primary}};
+}
+
+QWidget:disabled {
+    color: {{text.disabled}};
+}
+
+QLabel {
+    background: transparent;
+}
+
+QLabel[variant="title"] {
+    font-size: {{font.title}}pt;
+    font-weight: 600;
+    color: {{color.text_primary}};
+}
+
+QLabel[variant="heading"] {
+    font-size: {{font.heading}}pt;
+    font-weight: 600;
+    color: {{color.text_primary}};
+}
+
+QLabel[variant="caption"] {
+    font-size: {{font.label}}pt;
+    color: {{color.text_secondary}};
+}
+
+/* Section eyebrows. Letter-spacing is the cheapest way to make a small
+ * uppercase label read as a label rather than as shouting. Qt has no
+ * text-transform, so the caller supplies uppercase text -- Card.set_title()
+ * does it for you. */
+QLabel[variant="eyebrow"] {
+    font-size: {{font.micro}}pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: {{color.text_tertiary}};
+}
+
+QLabel[variant="numeric"] {
+    font-family: "{{family.numeric}}";
+    font-size: {{font.readout}}pt;
+    font-weight: 500;
+    color: {{color.text_primary}};
+}
+
+QLabel[variant="mono"] {
+    font-family: "{{family.mono}}";
+    font-size: {{font.label}}pt;
+    color: {{color.text_secondary}};
+}
+
+QLabel[variant="warn"]  { color: {{color.warn}}; }
+QLabel[variant="fault"] { color: {{color.bad}}; }
+QLabel[variant="accent"]{ color: {{color.accent}}; }
+
+/* --------------------------------------------------------------- surfaces */
+
+QWidget#Card,
+QFrame#Card {
+    background-color: {{color.bg_raised}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.card}}px;
+}
+
+/* Set from Card.set_highlighted(); needs an explicit re-polish, which
+ * qss.restyle() does, because Qt does not re-run selector matching when a
+ * dynamic property changes. */
+QWidget#Card[highlighted="true"],
+QFrame#Card[highlighted="true"] {
+    border-color: {{color.accent}};
+}
+
+QWidget#CardHeader {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid {{color.line}};
+}
+
+QWidget#CardBody {
+    background: transparent;
+    border: none;
+}
+
+QLabel#CardTitle {
+    font-size: {{font.micro}}pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: {{color.text_secondary}};
+    background: transparent;
+}
+
+QWidget#Panel {
+    background-color: {{color.bg_raised}};
+    border: none;
+}
+
+QWidget#Overlay {
+    background-color: {{color.bg_overlay}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.overlay}}px;
+}
+
+QFrame[frameShape="4"],   /* HLine */
+QFrame[frameShape="5"] {  /* VLine */
+    background: {{color.line}};
+    border: none;
+    max-height: 1px;
+    color: {{color.line}};
+}
+
+QFrame#Divider {
+    background-color: {{color.line}};
+    border: none;
+    max-height: 1px;
+}
+
+QSplitter::handle {
+    background-color: {{color.bg_base}};
+}
+QSplitter::handle:horizontal { width: {{space.xs}}px; }
+QSplitter::handle:vertical   { height: {{space.xs}}px; }
+QSplitter::handle:hover      { background-color: {{color.line}}; }
+QSplitter::handle:pressed    { background-color: {{color.accent}}; }
+
+/* Margins are set on the widget in MainWindow._build_status_bar, not here:
+ * QStatusBar lays its permanent widgets out with its own private QBoxLayout,
+ * which does not read stylesheet padding. */
+QStatusBar {
+    background-color: {{color.bg_raised}};
+    border-top: 1px solid {{color.line}};
+    color: {{color.text_secondary}};
+}
+QStatusBar::item { border: none; }
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+QScrollArea > QWidget > QWidget { background: transparent; }
+
+QDockWidget {
+    color: {{color.text_secondary}};
+    titlebar-close-icon: none;
+    titlebar-normal-icon: none;
+}
+QDockWidget::title {
+    background-color: {{header.bg}};
+    padding: {{space.sm}}px {{space.md}}px;
+    border-bottom: 1px solid {{color.line}};
+}
+
+/* --------------------------------------------------------------- buttons */
+
+QPushButton {
+    background-color: {{btn.bg}};
+    border: 1px solid {{btn.border}};
+    border-radius: {{radius.control}}px;
+    color: {{color.text_primary}};
+    padding: {{space.sm}}px {{space.md}}px;
+    min-height: 20px;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: {{btn.bg_hover}};
+    border-color: {{btn.border_hover}};
+}
+QPushButton:pressed {
+    background-color: {{btn.bg_pressed}};
+    border-color: {{btn.border}};
+}
+QPushButton:checked {
+    background-color: {{accent.soft}};
+    border-color: {{color.accent}};
+    color: {{color.text_primary}};
+}
+QPushButton:checked:hover {
+    background-color: {{accent.soft_hover}};
+}
+QPushButton:disabled {
+    background-color: {{btn.bg_disabled}};
+    border-color: {{color.line}};
+    color: {{text.disabled}};
+}
+QPushButton:focus {
+    border-color: {{focus.ring}};
+    outline: none;
+}
+QPushButton:default {
+    border-color: {{focus.ring_soft}};
+}
+
+QPushButton[variant="primary"] {
+    background-color: {{accent.bg}};
+    border-color: {{accent.bg}};
+    color: {{accent.on}};
+    font-weight: 600;
+}
+QPushButton[variant="primary"]:hover {
+    background-color: {{accent.bg_hover}};
+    border-color: {{accent.bg_hover}};
+}
+QPushButton[variant="primary"]:pressed {
+    background-color: {{accent.bg_pressed}};
+    border-color: {{accent.bg_pressed}};
+}
+QPushButton[variant="primary"]:disabled {
+    background-color: {{btn.bg_disabled}};
+    border-color: {{color.line}};
+    color: {{text.disabled}};
+}
+
+/* Reserved for arming, disarming and E-stop. The colour is the exception
+ * documented in tokens.Palette: a critical control that is not red is a
+ * safety defect, and red cannot be mistaken for a delta here. */
+QPushButton[variant="danger"] {
+    background-color: {{danger.bg}};
+    border-color: {{danger.bg}};
+    color: {{color.text_primary}};
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+QPushButton[variant="danger"]:hover {
+    background-color: {{danger.bg_hover}};
+    border-color: {{danger.bg_hover}};
+}
+QPushButton[variant="danger"]:pressed {
+    background-color: {{danger.bg_pressed}};
+    border-color: {{danger.bg_pressed}};
+}
+
+QPushButton[variant="ghost"] {
+    background-color: transparent;
+    border-color: transparent;
+    color: {{color.text_secondary}};
+}
+QPushButton[variant="ghost"]:hover {
+    background-color: {{btn.bg}};
+    color: {{color.text_primary}};
+}
+QPushButton[variant="ghost"]:pressed {
+    background-color: {{btn.bg_pressed}};
+}
+
+QPushButton[variant="quiet"] {
+    background-color: transparent;
+    border-color: {{color.line}};
+    color: {{color.text_secondary}};
+}
+QPushButton[variant="quiet"]:hover {
+    border-color: {{btn.border_hover}};
+    color: {{color.text_primary}};
+}
+
+QPushButton:flat {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+QToolButton {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: {{radius.control}}px;
+    color: {{color.text_secondary}};
+    padding: {{space.xs}}px;
+}
+QToolButton:hover {
+    background-color: {{btn.bg}};
+    color: {{color.text_primary}};
+}
+QToolButton:pressed  { background-color: {{btn.bg_pressed}}; }
+QToolButton:checked  {
+    background-color: {{accent.soft}};
+    border-color: {{color.accent}};
+    color: {{color.text_primary}};
+}
+QToolButton:disabled { color: {{text.disabled}}; }
+QToolButton::menu-indicator { image: none; }
+
+QToolBar {
+    background-color: {{color.bg_raised}};
+    border: none;
+    border-bottom: 1px solid {{color.line}};
+    spacing: {{space.xs}}px;
+    padding: {{space.xs}}px {{space.sm}}px;
+}
+QToolBar::separator {
+    background-color: {{color.line}};
+    width: 1px;
+    margin: {{space.xs}}px {{space.sm}}px;
+}
+
+/* ------------------------------------------------------------ text input */
+
+QLineEdit,
+QPlainTextEdit,
+QTextEdit,
+QAbstractSpinBox {
+    background-color: {{field.bg}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.control}}px;
+    color: {{color.text_primary}};
+    padding: {{space.sm}}px {{space.sm}}px;
+    selection-background-color: {{sel.bg}};
+    selection-color: {{color.text_primary}};
+}
+QLineEdit:hover,
+QPlainTextEdit:hover,
+QTextEdit:hover,
+QAbstractSpinBox:hover {
+    border-color: {{btn.border_hover}};
+}
+QLineEdit:focus,
+QPlainTextEdit:focus,
+QTextEdit:focus,
+QAbstractSpinBox:focus {
+    border-color: {{focus.ring}};
+    background-color: {{field.bg_hover}};
+}
+QLineEdit:disabled,
+QPlainTextEdit:disabled,
+QTextEdit:disabled,
+QAbstractSpinBox:disabled {
+    background-color: {{field.bg_disabled}};
+    color: {{text.disabled}};
+}
+/* Validation states for the parameter editor. `telekart_protocol.params.coerce`
+ * *rejects* out-of-range values rather than clamping them, so the field has to
+ * be able to say "this will not be accepted" before the push is attempted. */
+QLineEdit[state="warning"],
+QAbstractSpinBox[state="warning"] {
+    border-color: {{color.warn}};
+    background-color: {{warn.soft}};
+}
+QLineEdit[state="invalid"],
+QAbstractSpinBox[state="invalid"] {
+    border-color: {{color.bad}};
+    background-color: {{danger.soft}};
+}
+
+/* Numbers are typed and read as numbers. Tabular figures everywhere. */
+QAbstractSpinBox,
+QLineEdit[variant="numeric"] {
+    font-family: "{{family.numeric}}";
+}
+
+QAbstractSpinBox::up-button,
+QAbstractSpinBox::down-button {
+    background-color: {{btn.bg}};
+    border: none;
+    width: 16px;
+    subcontrol-origin: border;
+}
+QAbstractSpinBox::up-button {
+    subcontrol-position: top right;
+    border-top-right-radius: {{radius.control}}px;
+    margin: 1px 1px 0px 0px;
+}
+QAbstractSpinBox::down-button {
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: {{radius.control}}px;
+    margin: 0px 1px 1px 0px;
+}
+QAbstractSpinBox::up-button:hover,
+QAbstractSpinBox::down-button:hover {
+    background-color: {{btn.bg_hover}};
+}
+QAbstractSpinBox::up-button:pressed,
+QAbstractSpinBox::down-button:pressed {
+    background-color: {{color.accent}};
+}
+/* Arrows come from PNGs that icons.py rasterises out of the same SVG source
+ * as every other glyph; qss.py substitutes the whole declaration so that a
+ * failed export degrades to an empty rule rather than to a sized sub-control
+ * with no image in it. The CSS transparent-border triangle trick does not work
+ * here -- Qt has no mitred border joins and renders it as a dash. */
+QAbstractSpinBox::up-arrow   { {{arrow.up}} }
+QAbstractSpinBox::down-arrow { {{arrow.down}} }
+QAbstractSpinBox::up-arrow:disabled,
+QAbstractSpinBox::up-arrow:off   { {{arrow.up_off}} }
+QAbstractSpinBox::down-arrow:disabled,
+QAbstractSpinBox::down-arrow:off { {{arrow.down_off}} }
+
+/* -------------------------------------------------------------- combo box */
+
+QComboBox {
+    background-color: {{field.bg}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.control}}px;
+    color: {{color.text_primary}};
+    padding: {{space.sm}}px {{space.md}}px;
+    padding-right: {{space.xl}}px;
+    min-height: 18px;
+}
+QComboBox:hover    { border-color: {{btn.border_hover}}; }
+QComboBox:focus,
+QComboBox:on       { border-color: {{focus.ring}}; }
+QComboBox:disabled {
+    background-color: {{field.bg_disabled}};
+    color: {{text.disabled}};
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: {{space.xl}}px;
+    border: none;
+    background: transparent;
+}
+QComboBox::down-arrow          { {{arrow.down}} }
+QComboBox::down-arrow:disabled { {{arrow.down_off}} }
+
+QComboBox QAbstractItemView {
+    background-color: {{color.bg_overlay}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.card}}px;
+    padding: {{space.xs}}px;
+    outline: none;
+    selection-background-color: {{sel.bg}};
+    selection-color: {{color.text_primary}};
+}
+
+/* -------------------------------------------------------- check / radio */
+
+QCheckBox,
+QRadioButton {
+    background: transparent;
+    color: {{color.text_primary}};
+    spacing: {{space.sm}}px;
+    padding: 2px 0px;
+}
+QCheckBox:disabled,
+QRadioButton:disabled { color: {{text.disabled}}; }
+
+QCheckBox::indicator,
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    background-color: {{field.bg}};
+    border: 1px solid {{btn.border_hover}};
+}
+QCheckBox::indicator { border-radius: {{radius.control}}px; }
+QRadioButton::indicator { border-radius: 8px; }
+
+QCheckBox::indicator:hover,
+QRadioButton::indicator:hover { border-color: {{color.text_secondary}}; }
+
+QCheckBox::indicator:checked {
+    background-color: {{color.accent}};
+    border-color: {{color.accent}};
+    {{indicator.check}}
+}
+QCheckBox::indicator:indeterminate {
+    background-color: {{accent.soft_hover}};
+    border-color: {{color.accent}};
+    {{indicator.indeterminate}}
+}
+/* Dot-in-ring via a radial gradient, because QSS has no way to draw an inset
+ * shape and a solid fill reads as a checkbox, not a radio. */
+QRadioButton::indicator:checked {
+    border-color: {{color.accent}};
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+                                stop:0 {{color.accent}}, stop:0.5 {{color.accent}},
+                                stop:0.55 {{field.bg}}, stop:1 {{field.bg}});
+}
+QCheckBox::indicator:disabled,
+QRadioButton::indicator:disabled {
+    background-color: {{field.bg_disabled}};
+    border-color: {{color.line}};
+}
+
+/* -------------------------------------------------------------- sliders */
+
+QSlider {
+    background: transparent;
+}
+QSlider::groove:horizontal {
+    height: 4px;
+    background-color: {{slider.groove}};
+    border-radius: 2px;
+    margin: 0px;
+}
+QSlider::sub-page:horizontal {
+    background-color: {{slider.fill}};
+    border-radius: 2px;
+}
+QSlider::add-page:horizontal {
+    background-color: {{slider.groove}};
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    width: 12px;
+    height: 12px;
+    margin: -5px 0px;
+    border-radius: 6px;
+    background-color: {{slider.handle}};
+    border: 1px solid {{slider.handle_border}};
+}
+QSlider::handle:horizontal:hover  { background-color: {{color.text_primary}}; border-color: {{color.accent}}; }
+QSlider::handle:horizontal:pressed{ background-color: {{color.accent}}; border-color: {{color.accent}}; }
+
+QSlider::groove:vertical {
+    width: 4px;
+    background-color: {{slider.groove}};
+    border-radius: 2px;
+}
+QSlider::sub-page:vertical { background-color: {{slider.groove}}; border-radius: 2px; }
+QSlider::add-page:vertical { background-color: {{slider.fill}};   border-radius: 2px; }
+QSlider::handle:vertical {
+    width: 12px;
+    height: 12px;
+    margin: 0px -5px;
+    border-radius: 6px;
+    background-color: {{slider.handle}};
+    border: 1px solid {{slider.handle_border}};
+}
+QSlider::handle:vertical:hover   { border-color: {{color.accent}}; }
+QSlider::handle:vertical:pressed { background-color: {{color.accent}}; }
+
+QSlider:disabled::handle:horizontal,
+QSlider:disabled::handle:vertical {
+    background-color: {{color.text_tertiary}};
+    border-color: {{color.line}};
+}
+QSlider:disabled::sub-page:horizontal,
+QSlider:disabled::add-page:vertical {
+    background-color: {{color.text_tertiary}};
+}
+
+/* ------------------------------------------------------------ progress */
+
+/* min-/max-height rather than height: QSS `height` is a hint that the layout
+ * is free to ignore, and a progress bar that grows to fill its row looks like
+ * a button. */
+QProgressBar {
+    background-color: {{slider.groove}};
+    border: none;
+    border-radius: {{radius.control}}px;
+    min-height: 16px;
+    max-height: 16px;
+    text-align: center;
+    color: {{color.text_secondary}};
+    font-family: "{{family.numeric}}";
+    font-size: {{font.micro}}pt;
+}
+QProgressBar::chunk {
+    background-color: {{color.accent}};
+    border-radius: {{radius.control}}px;
+}
+QProgressBar[variant="quiet"]::chunk {
+    background-color: {{color.text_tertiary}};
+}
+
+/* ---------------------------------------------------------- scroll bars */
+
+/* 8 px, no arrows, rounded handle, transparent track. The default Qt
+ * scrollbar with its two arrow buttons is the single loudest tell that an
+ * application was never styled. */
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 0px;
+    border: none;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0px;
+    border: none;
+}
+QScrollBar::handle:vertical {
+    background-color: {{scroll.handle}};
+    border-radius: 4px;
+    min-height: 28px;
+}
+QScrollBar::handle:horizontal {
+    background-color: {{scroll.handle}};
+    border-radius: 4px;
+    min-width: 28px;
+}
+QScrollBar::handle:hover   { background-color: {{scroll.handle_hover}}; }
+QScrollBar::handle:pressed { background-color: {{scroll.handle_pressed}}; }
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    height: 0px;
+    border: none;
+    background: none;
+}
+QScrollBar::up-arrow:vertical,
+QScrollBar::down-arrow:vertical,
+QScrollBar::left-arrow:horizontal,
+QScrollBar::right-arrow:horizontal {
+    width: 0px;
+    height: 0px;
+    background: none;
+    border: none;
+}
+QScrollBar::add-page,
+QScrollBar::sub-page {
+    background: transparent;
+}
+
+/* ----------------------------------------------------------- item views */
+
+QAbstractItemView {
+    background-color: {{color.bg_raised}};
+    alternate-background-color: {{row.alt}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.card}}px;
+    color: {{color.text_primary}};
+    outline: none;
+    selection-background-color: {{sel.bg}};
+    selection-color: {{color.text_primary}};
+    gridline-color: {{color.line}};
+}
+QAbstractItemView:focus { border-color: {{focus.ring_soft}}; }
+
+QTreeView,
+QTableView,
+QListView {
+    show-decoration-selected: 1;
+}
+
+QTreeView::item,
+QTableView::item,
+QListView::item {
+    padding: {{space.xs}}px {{space.sm}}px;
+    border: none;
+    border-radius: {{radius.control}}px;
+}
+QTreeView::item:hover,
+QTableView::item:hover,
+QListView::item:hover {
+    background-color: {{row.hover}};
+}
+QTreeView::item:selected,
+QTableView::item:selected,
+QListView::item:selected {
+    background-color: {{sel.bg}};
+    color: {{color.text_primary}};
+}
+QTreeView::item:selected:!active,
+QTableView::item:selected:!active,
+QListView::item:selected:!active {
+    background-color: {{sel.bg_inactive}};
+    color: {{color.text_secondary}};
+}
+QTreeView::item:disabled,
+QTableView::item:disabled,
+QListView::item:disabled {
+    color: {{text.disabled}};
+}
+
+QTreeView::branch {
+    background: transparent;
+    border: none;
+}
+QTreeView::branch:has-children:!has-siblings:closed,
+QTreeView::branch:closed:has-children:has-siblings { {{arrow.right}} }
+QTreeView::branch:open:has-children:!has-siblings,
+QTreeView::branch:open:has-children:has-siblings   { {{arrow.down}} }
+
+QTableView {
+    gridline-color: {{color.line}};
+}
+QTableView QTableCornerButton::section {
+    background-color: {{header.bg}};
+    border: none;
+    border-right: 1px solid {{color.line}};
+    border-bottom: 1px solid {{color.line}};
+}
+
+QHeaderView {
+    background-color: transparent;
+    border: none;
+}
+QHeaderView::section {
+    background-color: {{header.bg}};
+    color: {{color.text_secondary}};
+    border: none;
+    border-right: 1px solid {{color.line}};
+    border-bottom: 1px solid {{color.line}};
+    padding: {{space.sm}}px {{space.sm}}px;
+    font-size: {{font.micro}}pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
+QHeaderView::section:last,
+QHeaderView::section:only-one {
+    border-right: none;
+}
+QHeaderView::section:vertical {
+    border-right: 1px solid {{color.line}};
+    border-bottom: 1px solid {{color.line}};
+}
+QHeaderView::section:hover {
+    background-color: {{header.bg_hover}};
+    color: {{color.text_primary}};
+}
+/* `:checked` on a header section means "a cell in this column is selected",
+ * not "this column is sorted". Colouring it accent made every header label
+ * turn orange the moment a row was selected, which reads as an error state. */
+QHeaderView::section:checked {
+    background-color: {{header.bg_hover}};
+    color: {{color.text_primary}};
+}
+QHeaderView::up-arrow   { {{arrow.up_on}} }
+QHeaderView::down-arrow { {{arrow.down_on}} }
+
+/* ---------------------------------------------------------------- tabs */
+
+QTabWidget::pane {
+    background-color: {{color.bg_raised}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.card}}px;
+    top: -1px;
+}
+QTabWidget::tab-bar { left: 0px; }
+
+QTabBar {
+    background: transparent;
+    qproperty-drawBase: 0;
+}
+QTabBar::tab {
+    background: transparent;
+    color: {{color.text_secondary}};
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: {{space.sm}}px {{space.md}}px;
+    margin-right: {{space.xs}}px;
+    font-weight: 500;
+}
+QTabBar::tab:hover {
+    color: {{color.text_primary}};
+    border-bottom-color: {{color.line}};
+}
+QTabBar::tab:selected {
+    color: {{color.text_primary}};
+    border-bottom-color: {{color.accent}};
+}
+QTabBar::tab:disabled { color: {{text.disabled}}; }
+QTabBar::close-button { image: none; }
+
+/* --------------------------------------------------------------- menus */
+
+QMenuBar {
+    background-color: {{color.bg_raised}};
+    border-bottom: 1px solid {{color.line}};
+    color: {{color.text_secondary}};
+    padding: 2px {{space.xs}}px;
+}
+QMenuBar::item {
+    background: transparent;
+    padding: {{space.xs}}px {{space.sm}}px;
+    border-radius: {{radius.control}}px;
+}
+QMenuBar::item:selected { background-color: {{btn.bg}}; color: {{color.text_primary}}; }
+QMenuBar::item:pressed  { background-color: {{sel.bg}};  color: {{color.text_primary}}; }
+
+QMenu {
+    background-color: {{color.bg_overlay}};
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.overlay}}px;
+    padding: {{space.xs}}px;
+    color: {{color.text_primary}};
+}
+QMenu::item {
+    padding: {{space.sm}}px {{space.lg}}px {{space.sm}}px {{space.md}}px;
+    border-radius: {{radius.control}}px;
+    background: transparent;
+}
+QMenu::item:selected { background-color: {{sel.bg}}; }
+QMenu::item:disabled { color: {{text.disabled}}; }
+QMenu::separator {
+    height: 1px;
+    background-color: {{color.line}};
+    margin: {{space.xs}}px {{space.sm}}px;
+}
+QMenu::indicator {
+    width: 12px;
+    height: 12px;
+    margin-left: {{space.sm}}px;
+}
+QMenu::indicator:checked {
+    background-color: {{color.accent}};
+    border-radius: 2px;
+}
+QMenu::right-arrow {
+    {{arrow.right}}
+    margin-right: {{space.sm}}px;
+}
+
+/* ------------------------------------------------------------- tooltip */
+
+/* Card radius rather than overlay radius: a tooltip is about 26 px tall, and
+ * a 12 px corner on that reads as a lozenge. */
+QToolTip {
+    background-color: {{color.bg_overlay}};
+    color: {{color.text_primary}};
+    border: 1px solid {{tooltip.border}};
+    border-radius: {{radius.card}}px;
+    padding: {{space.xs}}px {{space.sm}}px;
+    font-size: {{font.label}}pt;
+    opacity: 240;
+}
+
+/* ------------------------------------------------------------ group box */
+
+QGroupBox {
+    background: transparent;
+    border: 1px solid {{color.line}};
+    border-radius: {{radius.card}}px;
+    margin-top: {{space.md}}px;
+    padding: {{space.md}}px {{space.md}}px {{space.sm}}px {{space.md}}px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: {{space.md}}px;
+    padding: 0px {{space.xs}}px;
+    color: {{color.text_secondary}};
+    font-size: {{font.micro}}pt;
+    letter-spacing: 1px;
+    background-color: {{color.bg_base}};
+}
+
+/* ---------------------------------------------------- painted-widget hooks
+ *
+ * The custom instruments paint themselves and read tokens.py directly, but
+ * they still live inside layouts, so their frames are declared here to keep
+ * the seam between painted and styled surfaces invisible. */
+
+QWidget#NavRail {
+    background-color: {{color.bg_raised}};
+    border-right: 1px solid {{color.line}};
+}
+
+QWidget#Instrument {
+    background: transparent;
+    border: none;
+}
+
+QWidget#HudBar {
+    background-color: {{hud.bg}};
+    border-top: 1px solid {{color.line}};
+}
