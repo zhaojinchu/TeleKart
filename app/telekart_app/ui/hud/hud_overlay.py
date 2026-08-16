@@ -333,7 +333,11 @@ def build_events(
 
     if vehicle.state is VehicleState.ESTOP:
         events.append(
-            BannerEvent(Severity.CRITICAL, "e-stop latched", "clear it to re-arm")
+            BannerEvent(
+                Severity.CRITICAL,
+                "e-stop latched",
+                "Car \u25b8 Clear E-stop  (\u2303\u21e7E), then Arm (\u2303\u23ce)",
+            )
         )
     elif vehicle.state is VehicleState.FAILSAFE:
         events.append(

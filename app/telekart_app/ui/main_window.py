@@ -221,7 +221,7 @@ class MainWindow(QMainWindow):
         # Cmd+. is the Mac convention for "stop what you are doing", and it is
         # unreachable by accident with one hand on a wheel.
         self._add(car, "Emergency stop", "Ctrl+.", self._model.estop)
-        self._add(car, "Clear E-stop", None, self._model.clear_estop)
+        self._add(car, "Clear E-stop", "Ctrl+Shift+E", self._model.clear_estop)
         self._add(car, "Clear faults", None, self._model.clear_faults)
         self._add(car, "Reset odometry", None, self._model.reset_odom)
         car.addSeparator()

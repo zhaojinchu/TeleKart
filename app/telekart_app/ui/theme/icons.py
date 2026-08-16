@@ -324,11 +324,19 @@ def icon_pixmap(
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    # Draw in LOGICAL units, not device pixels. QPainter on a pixmap carrying a
+    # devicePixelRatio already applies that scale, so a target rect of px (=
+    # size * dpr) renders the icon at dpr times its intended size and keeps only
+    # the top-left corner. At dpr 2 that yields a magnified fragment; at dpr 3
+    # the artwork lands entirely outside the pixmap and the icon is blank. It
+    # looks correct at dpr 1, which is exactly why it survived review -- every
+    # Retina display got broken icons.
+    logical = float(size)
     if _HAVE_SVG:
         renderer = QSvgRenderer(svg_source(name, color).encode("utf-8"))
-        renderer.render(painter, QRectF(0.0, 0.0, float(px), float(px)))
+        renderer.render(painter, QRectF(0.0, 0.0, logical, logical))
     else:
-        _draw_placeholder(painter, px, color)
+        _draw_placeholder(painter, size, color)
     painter.end()
 
     _CACHE[key] = pixmap
