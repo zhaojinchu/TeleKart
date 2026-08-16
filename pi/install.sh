@@ -120,7 +120,19 @@ else
 fi
 
 if lsmod 2>/dev/null | grep -q '^snd_bcm2835'; then
-    warn "snd_bcm2835 is loaded right now -- the PWM channels are taken"
+    warn "snd_bcm2835 is loaded right now"
+    # Observed on a Desktop image: dtparam=audio=off stops the dtoverlay path,
+    # but vc4's KMS driver still pulls snd_bcm2835 in through snd_soc_hdmi_codec.
+    # The dtparam alone is therefore NOT sufficient on any image with the
+    # desktop/KMS stack, which is exactly the image most people flash first.
+    if [ ! -f /etc/modprobe.d/telekart-no-audio.conf ]; then
+        warn "  dtparam=audio=off alone does not stop this on a KMS/desktop image;"
+        warn "  the HDMI audio codec drags it back in. Blacklist it as well:"
+        warn "    echo 'blacklist snd_bcm2835' | sudo tee /etc/modprobe.d/telekart-no-audio.conf"
+        warn "    sudo rmmod snd_bcm2835"
+    else
+        warn "  blacklisted already -- it will stay out after the next reboot"
+    fi
 fi
 
 if [ -x /usr/local/bin/pigpiod ]; then
@@ -213,9 +225,26 @@ install_unit "$PI_DIR/systemd/telekart-wifi-nopowersave.service" \
              "$SYSTEMD_DIR/telekart-wifi-nopowersave.service"
 
 step "pigpiod drop-in"
-run install -D -m 0644 "$PI_DIR/systemd/pigpiod.service.d/override.conf" \
-    "$SYSTEMD_DIR/pigpiod.service.d/override.conf"
-done_say "installed $SYSTEMD_DIR/pigpiod.service.d/override.conf"
+# The template names /usr/local/bin/pigpiod because that is where a source
+# build lands, but Bookworm's own package installs v79 to /usr/bin -- the same
+# version, so building from source there buys nothing. Point the unit at
+# whichever binary actually exists rather than making the operator notice a
+# unit that fails with a bare "No such file or directory".
+PIGPIOD_BIN=""
+for candidate in /usr/local/bin/pigpiod /usr/bin/pigpiod; do
+    [ -x "$candidate" ] && PIGPIOD_BIN="$candidate" && break
+done
+if [ -n "$PIGPIOD_BIN" ]; then
+    run install -D -m 0644 /dev/stdin \
+        "$SYSTEMD_DIR/pigpiod.service.d/override.conf" \
+        < <(sed "s#^ExecStart=/usr/local/bin/pigpiod#ExecStart=$PIGPIOD_BIN#" \
+            "$PI_DIR/systemd/pigpiod.service.d/override.conf")
+    done_say "installed $SYSTEMD_DIR/pigpiod.service.d/override.conf (ExecStart=$PIGPIOD_BIN)"
+else
+    run install -D -m 0644 "$PI_DIR/systemd/pigpiod.service.d/override.conf" \
+        "$SYSTEMD_DIR/pigpiod.service.d/override.conf"
+    done_say "installed $SYSTEMD_DIR/pigpiod.service.d/override.conf"
+fi
 if [ ! -f "$SYSTEMD_DIR/pigpiod.service" ] && \
    [ ! -f /lib/systemd/system/pigpiod.service ] && \
    [ ! -f /usr/lib/systemd/system/pigpiod.service ]; then
