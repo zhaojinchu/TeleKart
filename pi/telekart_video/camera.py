@@ -250,6 +250,70 @@ class Picamera2Source(CameraSource):
         controls["AwbEnable"] = cfg.awb_enable
         return controls
 
+    def _full_fov_mode(self, picam: Any, output: tuple[int, int]) -> dict[str, Any] | None:
+        """Pick a sensor mode that reads the WHOLE sensor, not a centre crop.
+
+        Left to choose for itself, libcamera matches the requested output size
+        to the nearest sensor mode -- and on an IMX219 a 640x480 request lands
+        on a mode that crops 1280x960 out of a 3280x2464 array. That is a 2.6x
+        crop, so the picture arrives looking zoomed in with a telephoto field of
+        view, which is exactly wrong for driving: you want to see the kerb you
+        are about to hit, not a close-up of the floor.
+
+        So ask for a raw stream whose crop covers the full array, and let the
+        ISP downscale. Chosen by measuring the crop rectangle rather than
+        hardcoding 1640x1232, because the same code has to be right on an
+        IMX708 or an OV5647 with entirely different mode tables.
+
+        Returns None when the modes cannot be read, in which case libcamera's
+        default choice stands -- a cropped picture is much better than no start.
+        """
+        if not self._config.full_fov:
+            return None
+        try:
+            modes = list(picam.sensor_modes)
+        except Exception as exc:  # noqa: BLE001 - vendor code, unknown failures
+            _log.warning("cannot read sensor modes (%s); using libcamera's choice", exc)
+            return None
+        if not modes:
+            return None
+
+        def crop_area(mode: dict[str, Any]) -> int:
+            crop = mode.get("crop_limits")
+            if not crop or len(crop) < 4:
+                return 0
+            return int(crop[2]) * int(crop[3])
+
+        widest = max((crop_area(m) for m in modes), default=0)
+        if widest <= 0:
+            return None
+
+        # Among the full-FOV modes take the SMALLEST: every extra sensor pixel
+        # is ISP work and memory bandwidth on a 512 MB board, and it is all
+        # thrown away in the downscale to 640x480 anyway.
+        full = [m for m in modes if crop_area(m) == widest and m.get("size")]
+        if not full:
+            return None
+        chosen = min(full, key=lambda m: m["size"][0] * m["size"][1])
+
+        size = tuple(int(v) for v in chosen["size"])
+        if size[0] < output[0] or size[1] < output[1]:
+            # Upscaling from a smaller full-FOV mode would trade real detail for
+            # field of view. Let libcamera decide instead.
+            return None
+
+        _log.info(
+            "sensor mode %dx%d selected for full field of view (crop %s)",
+            size[0],
+            size[1],
+            chosen.get("crop_limits"),
+        )
+        raw: dict[str, Any] = {"size": size}
+        fmt = chosen.get("unpacked") or chosen.get("format")
+        if fmt is not None:
+            raw["format"] = str(fmt)
+        return raw
+
     def _make_encoder(self, api: _Picamera2Api) -> Any:
         cfg = self._config
         if cfg.codec is VideoCodec.MJPEG:
@@ -304,6 +368,10 @@ class Picamera2Source(CameraSource):
                     # stream it is one guaranteed frame of extra age.
                     "queue": False,
                 }
+                raw = self._full_fov_mode(picam, cfg.resolution)
+                if raw is not None:
+                    kwargs["raw"] = raw
+
                 if (cfg.hflip or cfg.vflip) and api.Transform is not None:
                     kwargs["transform"] = api.Transform(
                         hflip=1 if cfg.hflip else 0,

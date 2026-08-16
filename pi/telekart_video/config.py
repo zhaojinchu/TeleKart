@@ -48,8 +48,17 @@ _CODECS: dict[str, VideoCodec] = {"h264": VideoCodec.H264, "mjpeg": VideoCodec.M
 _CAMERA_DEFAULTS: dict[str, Any] = {
     # "fixed" forces a short exposure and buys the gain back; "auto" hands
     # brightness to the AE algorithm and accepts the motion blur.
-    "exposure_mode": "fixed",
+    # "auto" by default. A fixed short exposure is the right answer for a
+    # moving vehicle -- it is how you stop 33 ms of blur smearing the kerb --
+    # but it is far too dark for a stationary car indoors, and "the camera is
+    # broken" is the first conclusion anyone draws from a black picture. Switch
+    # to "fixed" once the car is actually driving.
+    "exposure_mode": "auto",
     "exposure_us": 6000,
+    # Read the whole sensor rather than a centre crop. See
+    # VideoCamera._full_fov_mode: an IMX219 asked for 640x480 otherwise lands on
+    # a 1280x960 crop of a 3280x2464 array and looks like a telephoto lens.
+    "full_fov": True,
     "analogue_gain": 6.0,
     "awb_enable": True,
     "hflip": False,
@@ -95,6 +104,7 @@ class VideoConfig:
     iperiod: int
 
     exposure_mode: str
+    full_fov: bool
     exposure_us: int
     analogue_gain: float
     awb_enable: bool
@@ -450,6 +460,7 @@ def load_config(
         bitrate=_as_int(shared["video_bitrate"], "video_bitrate"),
         iperiod=_as_int(shared["video_iperiod"], "video_iperiod"),
         exposure_mode=str(camera["exposure_mode"]),
+        full_fov=bool(camera["full_fov"]),
         exposure_us=_as_int(camera["exposure_us"], "camera.exposure_us"),
         analogue_gain=_as_float(camera["analogue_gain"], "camera.analogue_gain"),
         awb_enable=_as_bool(camera["awb_enable"], "camera.awb_enable"),
