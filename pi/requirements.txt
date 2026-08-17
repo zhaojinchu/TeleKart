@@ -1,0 +1,25 @@
+# TeleKart2 -- Pi dependencies.
+#
+# READ THIS BEFORE RUNNING pip install -r requirements.txt.
+#
+# Both real dependencies come from APT, not pip:
+#
+#     sudo apt install python3-pigpio pigpio python3-picamera2
+#     sudo systemctl enable --now pigpiod
+#
+# picamera2 is not reliably pip-installable -- it is a thin layer over libcamera, which
+# is a compiled system library with Python bindings that apt ships and pip does not.
+# pigpio's Python module must also match the pigpiod daemon that apt installs.
+#
+# Therefore the venv MUST be created so it can see the system packages:
+#
+#     python3 -m venv --system-site-packages ~/telekart2/.venv
+#
+# A venv without --system-site-packages will import neither, and `pip install pigpio`
+# into it produces a client library with no daemon to talk to.
+#
+# Everything else this project uses is in the standard library: http.server, socket,
+# json, threading, signal.
+
+# pigpio  # listed for reference only -- install via `apt install python3-pigpio`
+# picamera2  # listed for reference only -- install via `apt install python3-picamera2`

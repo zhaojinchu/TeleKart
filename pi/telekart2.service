@@ -1,0 +1,38 @@
+[Unit]
+Description=TeleKart2 control loop and camera stream
+# pigpiod owns the DMA channels this needs; without it main.py exits immediately.
+# Requires= (not Wants=) so a stopped daemon takes this down rather than leaving a
+# control process alive that cannot actually reach the hardware.
+Requires=pigpiod.service
+After=pigpiod.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telekart
+Group=telekart
+WorkingDirectory=/home/telekart/telekart2
+
+# The camera stack is not always ready the instant multi-user.target is reached, and a
+# failed Picamera2 init would otherwise degrade this to control-only until someone
+# noticed the HUD reading 0 fps.
+ExecStartPre=/bin/sleep 8
+
+# -u so the journal gets each line as it happens rather than in 8 KB blocks; without it
+# `journalctl -f` lags far enough behind to be useless while debugging.
+ExecStart=/home/telekart/telekart2/.venv/bin/python -u main.py
+
+Restart=always
+RestartSec=3
+
+# SIGTERM is what main.py's handler listens for: it coasts the bridge, stops the servo
+# pulse train, and releases the GPIO before exiting. Give it room to finish -- a hard
+# kill would leave the motors energised until the pins floated.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

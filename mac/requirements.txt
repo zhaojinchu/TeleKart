@@ -1,0 +1,7 @@
+pygame
+requests
+
+# The wheel speaks XInput, which macOS exposes to no HID API at all -- mac/xinput.py
+# reads it straight off the USB endpoint. Needs the libusb C library as well:
+#     brew install libusb
+pyusb
